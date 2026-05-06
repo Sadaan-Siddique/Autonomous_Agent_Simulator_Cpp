@@ -1,9 +1,8 @@
 #include <iostream>
 #include "../include/environment/environment.hpp"
 #include "../include/agents/agent.hpp"
-#include "../include/sensors/distanceSensor.hpp" // Include the specific sensor
+#include "../include/sensors/distanceSensor.hpp"
 
-// Helper function to pause the console
 void pauseSimulation() {
     std::cout << "\nPress Enter to continue to the next step...";
     std::cin.get();
@@ -12,68 +11,58 @@ void pauseSimulation() {
 
 int main()
 {
-    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V2 (Sensors) ===\n\n";
+    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V3 ===\n";
+    std::cout << "=== Fully Autonomous Mode ===\n\n";
 
-    // 1. Initialize Environment
+    // 1. Setup Environment
     Environment env(10, 10);
     
-    // Create a vertical wall
+    // Create a wall in the middle of the grid
     env.placeObstacle(Vector2D(5, 2));
     env.placeObstacle(Vector2D(5, 3));
     env.placeObstacle(Vector2D(5, 4));
     env.placeObstacle(Vector2D(5, 5));
+    env.placeObstacle(Vector2D(5, 6));
 
-    // 2. Initialize the Sensor
-    // Create a distance sensor that can see up to 3 units away
-    DistanceSensor mySensor(3); 
-
-    // 3. Initialize the Agent
-    // We pass the memory address (&) of our sensor into the agent
-    Agent myAgent(1, Vector2D(1, 3), &mySensor);
+    // 2. Setup Sensor and Agent
+    DistanceSensor mySensor(3); // detects 3 units long
+    Agent myAgent(1, Vector2D(1, 4), &mySensor); // id = 1
+    
+    // 3. Set the Target on the other side of the wall
+    Vector2D targetLocation(8, 4);
+    myAgent.setTarget(targetLocation);
+    
+    // Place agent and target on grid (We will represent the target as 'T' in our minds, 
+    // though the grid currently prints it as '.' unless you add a TARGET CellType to printGrid)
     env.placeAgent(myAgent.getPosition());
 
     std::cout << "Starting State:\n";
+    std::cout << "Agent Start: " << myAgent.getPosition() << "\n";
+    std::cout << "Target: " << targetLocation << "\n";
     env.printGrid();
     pauseSimulation();
 
-    // 4. Define our movement vectors
-    Vector2D moveRight(1, 0);
-    Vector2D moveDown(0, 1);
+    // 4. The Autonomous Simulation Loop
+    int step = 1;
+    int maxSteps = 30; // Safety limit to prevent infinite loops
 
-    // 5. The Sensor-Driven Simulation Loop
-    // The agent wants to move right, but will use its sensor to avoid crashing
-    for (int step = 1; step <= 8; step++) 
+    while (!(myAgent.getPosition() == targetLocation) && step <= maxSteps) 
     {
         std::cout << "--- Step " << step << " ---\n";
         
-        // Point the agent to the right so it can "look" that way
-        myAgent.setVelocity(moveRight);
-        
-        // Ping the sensor!
-        int distanceToHit = myAgent.sense(env);
+        // The agent does all the thinking and moving here!
+        myAgent.decideNextMove(env);
 
-        std::cout << "Agent is looking Right. Sensor returns: " << distanceToHit << "\n";
-
-        // Decision Making Logic based on Sensor data
-        if (distanceToHit > 0 && distanceToHit <= 1) {
-            std::cout << ">> WARNING: Obstacle imminent! Changing direction to Down.\n";
-            myAgent.setVelocity(moveDown);
-        } else if (distanceToHit == -1) {
-            std::cout << ">> Path is completely clear. Moving Right.\n";
-        } else {
-            std::cout << ">> Obstacle detected " << distanceToHit << " steps away. Continuing Right.\n";
-        }
-
-        // Execute the move
-        myAgent.move(env);
-
-        // Print the updated environment
         env.printGrid();
-        
         pauseSimulation();
+        step++;
     }
 
-    std::cout << "=== SIMULATION COMPLETE ===\n";
+    if (myAgent.getPosition() == targetLocation) {
+        std::cout << "SUCCESS: The agent autonomously navigated to the target!\n";
+    } else {
+        std::cout << "FAILED: The agent got stuck or ran out of steps.\n";
+    }
 
     return 0;
 }

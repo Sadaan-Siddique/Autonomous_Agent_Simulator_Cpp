@@ -11,7 +11,9 @@ class Agent {
         int m_id {};
         Vector2D m_position; // Stores where agent currently is
         Vector2D m_velocity; // Stores movement direction/speed
+        Vector2D m_target;
         Sensor* m_sensor;
+
 
     public:
         Agent(int, const Vector2D&, Sensor* );
@@ -19,10 +21,16 @@ class Agent {
         Vector2D getPosition() const;
 
         void setVelocity(const Vector2D& );
+        void setTarget(const Vector2D& target);
 
         void move(Environment& );
 
         int sense(Environment& ) const;
+
+        // Autonomous Logic
+        void decideNextMove(Environment& );
+        void chooseAlternativeDirection(Environment& );
+        Vector2D computeDirectionToTarget() const;
 };
 
 #endif
