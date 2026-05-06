@@ -1,0 +1,12 @@
+BluePrint Of Software
+
+List Of all Major classes:
+Vector2D
+Environment (parent 1)
+GridCell
+Agent (child 1)
+Car (child 1) (parent 2)
+Sensor (child 2)
+DistanceSensor 
+Pathfinder
+Renderer
