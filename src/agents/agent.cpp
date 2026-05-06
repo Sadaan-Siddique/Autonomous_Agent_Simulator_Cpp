@@ -16,7 +16,7 @@ void Agent::setVelocity(const Vector2D &velocity)
     m_velocity = velocity;
 }
 
-void Agent::setTarget(const Vector2D& target)
+void Agent::setTarget(const Vector2D &target)
 {
     m_target = target;
 }
@@ -37,37 +37,96 @@ void Agent::move(Environment &env)
     }
 }
 
-int Agent::sense(Environment& env) const
+int Agent::sense(Environment &env) const
 {
     return m_sensor->detect(m_position, m_velocity, env);
 }
 
-void Agent::decideNextMove(Environment& env)
+void Agent::decideNextMove(Environment &env)
 {
+    // if (m_position == m_target)
+    // {
+    //     std::cout << "Target reached!\n";
+    //     return;
+    // }
+
+    // Vector2D desiredDir = computeDirectionToTarget();
+
+    // // int obstacleDistance = m_sensor->detect(m_position, m_velocity, env);
+    // int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
+
+    // if (obstacleDistance == -1 || obstacleDistance > 1)
+    // {
+    //     m_velocity = desiredDir;
+    //     move(env); // Safe to move
+    // }
+    // else
+    // {
+    //     chooseAlternativeDirection(env);
+    //     move(env);
+    // }
+
     if (m_position == m_target)
     {
         std::cout << "Target reached!\n";
         return;
     }
 
-    Vector2D desiredDir = computeDirectionToTarget();
-
-    // int obstacleDistance = m_sensor->detect(m_position, m_velocity, env);
-    int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
-
-    if (obstacleDistance == -1 || obstacleDistance > 1)
+    // 🔥 SWITCH HERE
+    if (m_usePathfinding)
     {
-        m_velocity = desiredDir;
-        move(env); // Safe to move
+        // --- BFS PATH FOLLOWING ---
+
+        if (m_path.empty() || m_pathIndex >= m_path.size())
+        {
+            computePath(env);
+            return;
+        }
+
+        Vector2D nextPos = m_path[m_pathIndex];
+
+        m_velocity = nextPos - m_position;
+
+        if (sense(env) == 1)
+        {
+            std::cout << "Obstacle detected! Recomputing...\n";
+            computePath(env);
+            return;
+        }
+
+        move(env);
+        m_pathIndex++;
     }
     else
     {
-        chooseAlternativeDirection(env);
-        move(env);
+        // --- OLD GREEDY LOGIC ---
+        Vector2D desiredDir = computeDirectionToTarget();
+
+        int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
+
+        if (obstacleDistance == -1 || obstacleDistance > 1)
+        {
+            m_velocity = desiredDir;
+            move(env);
+        }
+        else
+        {
+            chooseAlternativeDirection(env);
+            move(env);
+        }
     }
+
+    // if (!m_path.empty() && m_pathIndex < m_path.size())
+    // {
+    //     Vector2D next = m_path[m_pathIndex];
+    //     m_velocity = next - m_position;
+
+    //     move(env);
+    //     m_pathIndex++;
+    // }
 }
 
-void Agent::chooseAlternativeDirection(Environment& env)
+void Agent::chooseAlternativeDirection(Environment &env)
 {
     // std::vector<Vector2D> directions = {
     //     {1,0}, {-1,0}, {0,1}, {0,-1} // For moving one step left, right bottom or top
@@ -84,28 +143,27 @@ void Agent::chooseAlternativeDirection(Environment& env)
     //     }
     // }
 
-
-    
-
     // Pehle dekho ke agent jana kahan chahta tha
     Vector2D desiredDir = computeDirectionToTarget();
     std::vector<Vector2D> priorityDirections;
 
-    // Agar horizontally jana chahta tha aur wall aagayi, 
+    // Agar horizontally jana chahta tha aur wall aagayi,
     // to pehle slide (Up/Down) try karo, peechay (reverse) jana aakhri option!
-    if (desiredDir.m_x != 0) { 
-        priorityDirections = { {0, 1}, {0, -1}, {-desiredDir.m_x, 0} };
-    } 
+    if (desiredDir.m_x != 0)
+    {
+        priorityDirections = {{0, 1}, {0, -1}, {-desiredDir.m_x, 0}};
+    }
     // Agar vertically hit kiya hai, to Left/Right slide try karo
-    else { 
-        priorityDirections = { {1, 0}, {-1, 0}, {0, -desiredDir.m_y} };
+    else
+    {
+        priorityDirections = {{1, 0}, {-1, 0}, {0, -desiredDir.m_y}};
     }
 
-    for(const auto& dir : priorityDirections)
+    for (const auto &dir : priorityDirections)
     {
         Vector2D nextPos = m_position + dir;
 
-        if(env.isInsideBounds(nextPos) && !env.isObstacle(nextPos))
+        if (env.isInsideBounds(nextPos) && !env.isObstacle(nextPos))
         {
             m_velocity = dir;
             return;
@@ -113,15 +171,29 @@ void Agent::chooseAlternativeDirection(Environment& env)
     }
 }
 
-Vector2D Agent::computeDirectionToTarget() const 
+Vector2D Agent::computeDirectionToTarget() const
 {
     Vector2D delta = m_target - m_position;
 
     // Restrict movement to 4-way (Orthogonal) by picking the longer axis first
-    if(std::abs(delta.m_x) > std::abs(delta.m_y))
-        return Vector2D(((delta.m_x > 0) ? 1 : -1 ), 0); // Move Horizontally 
-    else if(delta.m_y != 0)
+    if (std::abs(delta.m_x) > std::abs(delta.m_y))
+        return Vector2D(((delta.m_x > 0) ? 1 : -1), 0); // Move Horizontally
+    else if (delta.m_y != 0)
         return Vector2D(0, ((delta.m_y > 0) ? 1 : -1)); // Move Vertically
 
     return Vector2D(0, 0);
+}
+
+void Agent::computePath(Environment &env)
+{
+    m_path = BFS::findPath(m_position, m_target, env);
+
+    if (m_path.empty())
+    {
+        std::cout << "No path found! Target is unreachable.\n";
+        m_usePathfinding = false; // Turn off pathfinding so it doesn't loop forever
+    } else {
+        // FIX: Start at index 1, because index 0 is the cell the agent is already standing on!
+        m_pathIndex = 1;
+    }
 }

@@ -4,6 +4,7 @@
 #include "../core/vector2d.hpp"
 #include "../environment/environment.hpp"
 #include "../sensors/sensor.hpp"
+#include "../pathFinding/bfs.hpp"
 
 // Using Composition and aggregations
 class Agent {
@@ -13,7 +14,9 @@ class Agent {
         Vector2D m_velocity; // Stores movement direction/speed
         Vector2D m_target;
         Sensor* m_sensor;
-
+        std::vector<Vector2D> m_path; // full path from start → target
+        int m_pathIndex = 0; // where agent currently is in path
+        bool m_usePathfinding = true;
 
     public:
         Agent(int, const Vector2D&, Sensor* );
@@ -31,6 +34,9 @@ class Agent {
         void decideNextMove(Environment& );
         void chooseAlternativeDirection(Environment& );
         Vector2D computeDirectionToTarget() const;
+
+        void computePath(Environment& env);
+
 };
 
 #endif

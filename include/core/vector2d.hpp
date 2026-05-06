@@ -26,4 +26,10 @@ public:
     double magnitude() const;
 };
 
+struct Vector2DHash {
+    std::size_t operator()(const Vector2D& v) const {
+        return std::hash<int>()(v.m_x) ^ (std::hash<int>()(v.m_y) << 1);
+    }
+};
+
 #endif

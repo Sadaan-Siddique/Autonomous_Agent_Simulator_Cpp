@@ -2,6 +2,7 @@
 #include "../include/environment/environment.hpp"
 #include "../include/agents/agent.hpp"
 #include "../include/sensors/distanceSensor.hpp"
+#include "../include/pathFinding/bfs.hpp"
 
 void pauseSimulation() {
     std::cout << "\nPress Enter to continue to the next step...";
@@ -11,46 +12,50 @@ void pauseSimulation() {
 
 int main()
 {
-    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V3 ===\n";
-    std::cout << "=== Fully Autonomous Mode ===\n\n";
+    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V4 ===\n";
+    std::cout << "=== BFS Pathfinding Mode ===\n\n";
 
-    // 1. Setup Environment
     Environment env(10, 10);
     
-    // Create a wall in the middle of the grid
+    // Create a giant "C" shaped trap that would defeat the old greedy logic
+    // Top wall
+    env.placeObstacle(Vector2D(3, 2));
+    env.placeObstacle(Vector2D(4, 2));
     env.placeObstacle(Vector2D(5, 2));
-    env.placeObstacle(Vector2D(5, 3));
-    env.placeObstacle(Vector2D(5, 4));
-    env.placeObstacle(Vector2D(5, 5));
+    env.placeObstacle(Vector2D(6, 2));
+    // Back wall
+    env.placeObstacle(Vector2D(6, 3));
+    env.placeObstacle(Vector2D(6, 4));
+    env.placeObstacle(Vector2D(6, 5));
+    // Bottom wall
+    env.placeObstacle(Vector2D(6, 6));
     env.placeObstacle(Vector2D(5, 6));
+    env.placeObstacle(Vector2D(4, 6));
+    env.placeObstacle(Vector2D(3, 6));
 
-    // 2. Setup Sensor and Agent
-    DistanceSensor mySensor(3); // detects 3 units long
-    Agent myAgent(1, Vector2D(1, 4), &mySensor); // id = 1
+    // Setup Agent inside the trap
+    DistanceSensor mySensor(3); 
+    Agent myAgent(1, Vector2D(4, 4), &mySensor);
     
-    // 3. Set the Target on the other side of the wall
-    Vector2D targetLocation(8, 4);
+    // Set Target OUTSIDE the trap
+    Vector2D targetLocation(9, 4);
     myAgent.setTarget(targetLocation);
     
-    // Place agent and target on grid (We will represent the target as 'T' in our minds, 
-    // though the grid currently prints it as '.' unless you add a TARGET CellType to printGrid)
     env.placeAgent(myAgent.getPosition());
 
     std::cout << "Starting State:\n";
-    std::cout << "Agent Start: " << myAgent.getPosition() << "\n";
-    std::cout << "Target: " << targetLocation << "\n";
+    std::cout << "Agent Start (Inside Trap): " << myAgent.getPosition() << "\n";
+    std::cout << "Target (Outside Trap): " << targetLocation << "\n";
     env.printGrid();
     pauseSimulation();
 
-    // 4. The Autonomous Simulation Loop
     int step = 1;
-    int maxSteps = 30; // Safety limit to prevent infinite loops
+    int maxSteps = 40; 
 
     while (!(myAgent.getPosition() == targetLocation) && step <= maxSteps) 
     {
         std::cout << "--- Step " << step << " ---\n";
         
-        // The agent does all the thinking and moving here!
         myAgent.decideNextMove(env);
 
         env.printGrid();
@@ -59,7 +64,7 @@ int main()
     }
 
     if (myAgent.getPosition() == targetLocation) {
-        std::cout << "SUCCESS: The agent autonomously navigated to the target!\n";
+        std::cout << "SUCCESS: BFS successfully navigated the maze!\n";
     } else {
         std::cout << "FAILED: The agent got stuck or ran out of steps.\n";
     }
