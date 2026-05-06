@@ -7,50 +7,49 @@
 void pauseSimulation() {
     std::cout << "\nPress Enter to continue to the next step...";
     std::cin.get();
+    // for (int i = 0; i < 500000000; i++);
     std::cout << "\n----------------------------------------\n\n";
 }
 
 int main()
 {
-    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V4 ===\n";
-    std::cout << "=== BFS Pathfinding Mode ===\n\n";
+    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V5 ===\n";
+    std::cout << "=== Dynamic Random Pathfinding ===\n\n";
 
-    Environment env(10, 10);
+    // 1. Setup a larger grid for a better maze experience
+    Environment env(15, 15);
     
-    // Create a giant "C" shaped trap that would defeat the old greedy logic
-    // Top wall
-    env.placeObstacle(Vector2D(3, 2));
-    env.placeObstacle(Vector2D(4, 2));
-    env.placeObstacle(Vector2D(5, 2));
-    env.placeObstacle(Vector2D(6, 2));
-    // Back wall
-    env.placeObstacle(Vector2D(6, 3));
-    env.placeObstacle(Vector2D(6, 4));
-    env.placeObstacle(Vector2D(6, 5));
-    // Bottom wall
-    env.placeObstacle(Vector2D(6, 6));
-    env.placeObstacle(Vector2D(5, 6));
-    env.placeObstacle(Vector2D(4, 6));
-    env.placeObstacle(Vector2D(3, 6));
+    // 2. Generate random obstacles
+    int obstacleCount = 50; // 40 obstacles on a 150-cell grid
+    env.placeRandomObstacles(obstacleCount);
 
-    // Setup Agent inside the trap
+    // 3. Define Start and Target locations
+    Vector2D startLocation(0, 0);   // Top-Left
+    Vector2D targetLocation(14, 9); // Bottom-Right
+
+    // CRITICAL: Ensure the start and target cells are empty!
+    // We don't want an obstacle spawning exactly on our goal or on top of our agent.
+    env.clearCell(startLocation);
+    env.clearCell(targetLocation);
+
+    // 4. Setup Sensor and Agent
     DistanceSensor mySensor(3); 
-    Agent myAgent(1, Vector2D(4, 4), &mySensor);
-    
-    // Set Target OUTSIDE the trap
-    Vector2D targetLocation(9, 4);
+    Agent myAgent(1, startLocation, &mySensor);
     myAgent.setTarget(targetLocation);
     
+    // Place the agent on the map
     env.placeAgent(myAgent.getPosition());
 
     std::cout << "Starting State:\n";
-    std::cout << "Agent Start (Inside Trap): " << myAgent.getPosition() << "\n";
-    std::cout << "Target (Outside Trap): " << targetLocation << "\n";
+    std::cout << "Agent Start: " << startLocation << "\n";
+    std::cout << "Target Location: " << targetLocation << "\n";
+    std::cout << "Obstacles Generated: " << obstacleCount << "\n\n";
     env.printGrid();
     pauseSimulation();
 
+    // 5. The Simulation Loop
     int step = 1;
-    int maxSteps = 40; 
+    int maxSteps = 60; // Increased steps for a larger, more complex map
 
     while (!(myAgent.getPosition() == targetLocation) && step <= maxSteps) 
     {
@@ -59,14 +58,23 @@ int main()
         myAgent.decideNextMove(env);
 
         env.printGrid();
+        
+        // If the BFS logic turned off pathfinding because no path exists, break the loop early
+        if (myAgent.getPosition() == startLocation && step > 1) {
+             // Just a visual cue that it gave up
+             std::cout << "Simulation halting due to unreachable target.\n";
+             break;
+        }
+
         pauseSimulation();
         step++;
     }
 
+    std::cout << "\n=== SIMULATION RESULTS ===\n";
     if (myAgent.getPosition() == targetLocation) {
-        std::cout << "SUCCESS: BFS successfully navigated the maze!\n";
+        std::cout << "SUCCESS: Agent successfully navigated the random minefield!\n";
     } else {
-        std::cout << "FAILED: The agent got stuck or ran out of steps.\n";
+        std::cout << "FAILED: The agent could not reach the target. It might be completely walled off by random obstacles, or it ran out of steps!\n";
     }
 
     return 0;

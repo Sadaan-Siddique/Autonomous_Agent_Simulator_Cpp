@@ -80,7 +80,10 @@ void Agent::decideNextMove(Environment &env)
         if (m_path.empty() || m_pathIndex >= m_path.size())
         {
             computePath(env);
-            return;
+
+            // NEW FIX: If it's STILL empty after computing, just stop.
+            if (m_path.empty())
+                return;
         }
 
         Vector2D nextPos = m_path[m_pathIndex];
@@ -190,9 +193,12 @@ void Agent::computePath(Environment &env)
 
     if (m_path.empty())
     {
-        std::cout << "No path found! Target is unreachable.\n";
-        m_usePathfinding = false; // Turn off pathfinding so it doesn't loop forever
-    } else {
+        std::cout << "No path found! Target is physically unreachable.\n";
+        // Do NOT set m_usePathfinding = false;
+        // Just leave the path empty.
+    }
+    else
+    {
         // FIX: Start at index 1, because index 0 is the cell the agent is already standing on!
         m_pathIndex = 1;
     }
