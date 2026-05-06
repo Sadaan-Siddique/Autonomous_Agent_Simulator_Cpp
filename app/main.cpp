@@ -1,9 +1,9 @@
 #include <iostream>
 #include "../include/environment/environment.hpp"
 #include "../include/agents/agent.hpp"
-// Note: We don't need to include vector2d.hpp directly because agent.hpp and environment.hpp already include it!
+#include "../include/sensors/distanceSensor.hpp" // Include the specific sensor
 
-// Helper function to pause the console so we can watch the simulation step-by-step
+// Helper function to pause the console
 void pauseSimulation() {
     std::cout << "\nPress Enter to continue to the next step...";
     std::cin.get();
@@ -12,67 +12,65 @@ void pauseSimulation() {
 
 int main()
 {
-    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V1 ===\n\n";
+    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V2 (Sensors) ===\n\n";
 
-    // 1. Initialize a 10x10 Environment
+    // 1. Initialize Environment
     Environment env(10, 10);
-
-    // 2. Build a custom "maze" of obstacles
-    // Creating a wall that the agent will have to navigate around
-    env.placeObstacle(Vector2D(3, 0));
-    env.placeObstacle(Vector2D(3, 1));
-    env.placeObstacle(Vector2D(3, 2));
-    env.placeObstacle(Vector2D(3, 3));
-    env.placeObstacle(Vector2D(3, 4));
     
-    // Add a few random obstacles on the other side
-    env.placeObstacle(Vector2D(7, 7));
-    env.placeObstacle(Vector2D(6, 8));
+    // Create a vertical wall
+    env.placeObstacle(Vector2D(5, 2));
+    env.placeObstacle(Vector2D(5, 3));
+    env.placeObstacle(Vector2D(5, 4));
+    env.placeObstacle(Vector2D(5, 5));
+
+    // 2. Initialize the Sensor
+    // Create a distance sensor that can see up to 3 units away
+    DistanceSensor mySensor(3); 
 
     // 3. Initialize the Agent
-    // Start Agent 1 at the top-left corner (0,0)
-    Agent agent(1, Vector2D(0, 0));
-    
-    // CRITICAL: Place the agent on the grid for the very first time!
-    env.placeAgent(agent.getPosition());
+    // We pass the memory address (&) of our sensor into the agent
+    Agent myAgent(1, Vector2D(1, 3), &mySensor);
+    env.placeAgent(myAgent.getPosition());
 
     std::cout << "Starting State:\n";
     env.printGrid();
     pauseSimulation();
 
-    // 4. Create a sequence of moves to test our logic
-    // We will use standard Vector2D directions
+    // 4. Define our movement vectors
     Vector2D moveRight(1, 0);
     Vector2D moveDown(0, 1);
-    Vector2D moveLeft(-1, 0);
-    Vector2D moveUp(0, -1);
 
-    // Let's define a "flight plan" of velocities for the agent to follow
-    std::vector<Vector2D> flightPlan = {
-        moveRight, moveRight, moveRight, // Will hit the wall on the 3rd move!
-        moveDown, moveDown, moveDown, moveDown, moveDown, // Move down to clear the wall
-        moveRight, moveRight, moveRight, moveRight, // Move past the wall
-        moveUp, moveUp, // Move up towards the top right
-        moveRight, moveRight, moveRight, moveRight // Try to go off the edge of the map!
-    };
-
-    // 5. The Simulation Loop
-    int stepNumber = 1;
-    for (const Vector2D& currentVelocity : flightPlan) 
+    // 5. The Sensor-Driven Simulation Loop
+    // The agent wants to move right, but will use its sensor to avoid crashing
+    for (int step = 1; step <= 8; step++) 
     {
-        std::cout << "Step " << stepNumber << ": Agent attempting to move with velocity " << currentVelocity << "\n";
+        std::cout << "--- Step " << step << " ---\n";
         
-        // Give the agent its new velocity instructions
-        agent.setVelocity(currentVelocity);
+        // Point the agent to the right so it can "look" that way
+        myAgent.setVelocity(moveRight);
+        
+        // Ping the sensor!
+        int distanceToHit = myAgent.sense(env);
 
-        // Tell the agent to execute the move
-        agent.move(env);
+        std::cout << "Agent is looking Right. Sensor returns: " << distanceToHit << "\n";
+
+        // Decision Making Logic based on Sensor data
+        if (distanceToHit > 0 && distanceToHit <= 1) {
+            std::cout << ">> WARNING: Obstacle imminent! Changing direction to Down.\n";
+            myAgent.setVelocity(moveDown);
+        } else if (distanceToHit == -1) {
+            std::cout << ">> Path is completely clear. Moving Right.\n";
+        } else {
+            std::cout << ">> Obstacle detected " << distanceToHit << " steps away. Continuing Right.\n";
+        }
+
+        // Execute the move
+        myAgent.move(env);
 
         // Print the updated environment
         env.printGrid();
         
         pauseSimulation();
-        stepNumber++;
     }
 
     std::cout << "=== SIMULATION COMPLETE ===\n";

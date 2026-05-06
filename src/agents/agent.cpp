@@ -1,6 +1,6 @@
 #include "../../include/agents/agent.hpp"
 
-Agent::Agent(int id, const Vector2D &startPosition) : m_id(id), m_position(startPosition), m_velocity(0, 0)
+Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor) : m_id(id), m_position(startPosition), m_velocity(0, 0), m_sensor(sensor)
 {
     // Note: If you want the agent to appear on the grid the moment it is created,
     // you will need to call env.placeAgent() in your main.cpp right after initializing the agent.
@@ -30,4 +30,9 @@ void Agent::move(Environment &env)
     {
         std::cout << "Agent " << m_id << " is blocked!\n";
     }
+}
+
+int Agent::sense(Environment& env) const
+{
+    return m_sensor->detect(m_position, m_velocity, env);
 }
