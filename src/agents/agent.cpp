@@ -69,11 +69,39 @@ void Agent::decideNextMove(Environment& env)
 
 void Agent::chooseAlternativeDirection(Environment& env)
 {
-    std::vector<Vector2D> directions = {
-        {1,0}, {-1,0}, {0,1}, {0,-1} // For moving one step left, right bottom or top
-    };
+    // std::vector<Vector2D> directions = {
+    //     {1,0}, {-1,0}, {0,1}, {0,-1} // For moving one step left, right bottom or top
+    // };
 
-    for(const auto& dir : directions)
+    // for(const auto& dir : directions)
+    // {
+    //     Vector2D nextPos = m_position + dir;
+
+    //     if(env.isInsideBounds(nextPos) && !env.isObstacle(nextPos))
+    //     {
+    //         m_velocity = dir;
+    //         return;
+    //     }
+    // }
+
+
+    
+
+    // Pehle dekho ke agent jana kahan chahta tha
+    Vector2D desiredDir = computeDirectionToTarget();
+    std::vector<Vector2D> priorityDirections;
+
+    // Agar horizontally jana chahta tha aur wall aagayi, 
+    // to pehle slide (Up/Down) try karo, peechay (reverse) jana aakhri option!
+    if (desiredDir.m_x != 0) { 
+        priorityDirections = { {0, 1}, {0, -1}, {-desiredDir.m_x, 0} };
+    } 
+    // Agar vertically hit kiya hai, to Left/Right slide try karo
+    else { 
+        priorityDirections = { {1, 0}, {-1, 0}, {0, -desiredDir.m_y} };
+    }
+
+    for(const auto& dir : priorityDirections)
     {
         Vector2D nextPos = m_position + dir;
 
