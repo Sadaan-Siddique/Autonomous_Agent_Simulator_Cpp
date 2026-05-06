@@ -1,4 +1,8 @@
-# This removes the folders from Git's tracking, but KEEPS them on your local computer
-git rm -r --cached docs/team_distribution_suggestion.md
-git rm -r --cached executables/
-git rm -r --cached tests/
+# # This removes the folders from Git's tracking, but KEEPS them on your local computer
+# git rm -r --cached docs/team_distribution_suggestion.md
+# git rm -r --cached executables/
+# git rm -r --cached tests/
+
+docs/team_distribution_suggestion.md
+executables/
+tests/
