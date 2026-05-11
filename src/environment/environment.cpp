@@ -45,7 +45,17 @@ void Environment::clearCell(const Vector2D& pos) {
     if(isInsideBounds(pos)) m_grid[pos.m_y][pos.m_x] = (int)CellType::EMPTY;
 }
 
+// void Environment::placeRandomObstacles(int count, const Vector2D& currentPos, const Vector2D& targetLocation)
 void Environment::placeRandomObstacles(int count) {
+
+    // clearCell(currentPos);
+    // clearCell(targetLocation);
+    for (int y = 0; y < m_height; y++) 
+        for (int x = 0; x < m_width; x++)
+            clearCell(Vector2D(y, x));
+            // if(m_grid[y][x] == (int)CellType::OBSTACLE)
+                // m_grid[y][x] = (int)CellType::EMPTY;
+
     // 1. Setup the random number generator
     std::random_device rd;  // Obtain a random seed from the hardware
     std::mt19937 gen(rd()); // Standard mersenne_twister_engine seeded with rd()

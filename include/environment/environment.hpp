@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <vector>
+// #include "../agents/agent.hpp"
 #include "../core/vector2d.hpp"
 
 enum class CellType {
@@ -38,6 +39,7 @@ public:
     int getWidth() const;
     int getHeight() const;
 
+    // void placeRandomObstacles(int count, const Vector2D& currentPos, const Vector2D& targetLocation);
     void placeRandomObstacles(int count);
 
     void printGrid() const;
