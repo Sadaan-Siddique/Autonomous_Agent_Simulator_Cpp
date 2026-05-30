@@ -7,9 +7,9 @@
 
 void pauseSimulation()
 {
-    std::cout << "\nPress Enter to continue to the next step...";
-    std::cin.get();
-    // for (int i = 0; i < 300000000; i++);
+    // std::cout << "\nPress Enter to continue to the next step...";
+    // std::cin.get();
+    for (int i = 0; i < 300000000; i++);
     std::cout << "\n----------------------------------------\n\n";
 }
 
