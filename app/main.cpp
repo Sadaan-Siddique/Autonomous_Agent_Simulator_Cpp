@@ -1,92 +1,93 @@
 #include <iostream>
+// Step out of 'app' and into 'include' to grab your headers
 #include "../include/environment/environment.hpp"
 #include "../include/agents/agent.hpp"
 #include "../include/sensors/distanceSensor.hpp"
-#include "../include/pathFinding/bfs.hpp"
-#include "../include/math/matrix.hpp"
+#include "../include/render/renderer.hpp"
 
-void pauseSimulation()
-{
-    // std::cout << "\nPress Enter to continue to the next step...";
-    // std::cin.get();
-    for (int i = 0; i < 300000000; i++);
-    std::cout << "\n----------------------------------------\n\n";
-}
+// GLFW gives us access to time functions needed for the tick-rate
+#include <GLFW/glfw3.h>
 
 int main()
 {
-    std::cout << "=== AUTONOMOUS AGENT SIMULATOR V5 ===\n";
-    std::cout << "=== Dynamic Random Pathfinding ===\n\n";
+    std::cout << "Starting Autonomous Agent Simulator (OpenGL Renderer)...\n";
 
-    // Setup a larger grid for a better maze experience
-    Environment env(15, 15);
+    // 1. Initialize Simulation Data
+    Environment env(15, 10);
+    env.placeRandomObstacles(40);
 
-    // Define Start and Target locations
-    Vector2D startLocation(0, 0);    // Top-Left
-    Vector2D targetLocation(14, 12); // Bottom-Right
-
-    // Generate random obstacles
-    int obstacleCount = 50; // 40 obstacles on a 150-cell grid
-    env.placeRandomObstacles(obstacleCount);
-
-    // CRITICAL: Ensure the start and target cells are empty!
-    // We don't want an obstacle spawning exactly on our goal or on top of our agent.
+    Vector2D startLocation(0, 0);
+    Vector2D targetLocation(14, 9);
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 
-    // Setup Sensor and Agent
     DistanceSensor mySensor(3);
     Agent myAgent(1, startLocation, &mySensor);
     myAgent.setTarget(targetLocation);
 
-    // Place the agent on the map
+    // Explicitly place the agent on the grid so the environment knows it's there
     env.placeAgent(myAgent.getPosition());
 
-    std::cout << "Starting State:\n";
-    std::cout << "Agent Start: " << startLocation << "\n";
-    std::cout << "Target Location: " << targetLocation << "\n";
-    std::cout << "Obstacles Generated: " << obstacleCount << "\n\n";
-    env.printGrid();
-    pauseSimulation();
+    // 2. Initialize the Graphics Window
+    // This will open a 800x600 window with the specified title
+    Renderer renderer(800, 600, "Autonomous Agent Simulator V5.1");
 
-    // The Simulation Loop
-    int step = 1;
-    int maxSteps = 60; // Increased steps for a larger, more complex map
+    // 3. Time Management for the "Tick Rate"
+    // We don't want the agent making 60 decisions a second.
+    double lastTickTime = glfwGetTime();
+    double tickRate = 0.5; // The agent takes one step every 0.5 seconds
 
-    while (!(myAgent.getPosition() == targetLocation) && step <= maxSteps)
+    // 4. The Main Game Loop
+    // This loop runs as fast as your CPU/GPU allows (often 1000+ times a second)
+    while (renderer.isRunning())
     {
-        std::cout << "--- Step " << step << " ---\n";
 
-        env.placeRandomObstacles(obstacleCount);
-        env.clearCell(myAgent.getPosition());
-        env.clearCell(targetLocation);
-        env.placeAgent(myAgent.getPosition());
+        // env.placeRandomObstacles(40);
+        // env.clearCell(startLocation);
+        // env.clearCell(targetLocation);
 
-        myAgent.decideNextMove(env);
+        double currentTime = glfwGetTime();
 
-        env.printGrid();
-
-        // If the BFS logic turned off pathfinding because no path exists, break the loop early
-        if (myAgent.getPosition() == startLocation && step > 1)
+        // --- A. LOGIC TICK (Runs only twice a second) ---
+        if (currentTime - lastTickTime >= tickRate)
         {
-            // Just a visual cue that it gave up
-            std::cout << "Simulation halting due to unreachable target.\n";
-            break;
+
+            // Only decide a move if the agent hasn't reached the goal
+            if (!(myAgent.getPosition() == targetLocation))
+            {
+                myAgent.decideNextMove(env);
+                if (myAgent.getPosition() == startLocation)
+                {
+                    renderer.~Renderer();
+                    break;
+                }
+            }
+            else
+            {
+                std::cout << "Target Reached!\n";
+                // Optional: You could add a break; here to close the window,
+                // or just let it stay open so you can view the final state.
+            }
+
+            // Reset the timer for the next move
+            lastTickTime = currentTime;
         }
 
-        pauseSimulation();
-        step++;
+        // --- B. RENDER FRAME (Runs as fast as possible) ---
+        renderer.clearScreen();
+
+        // Draw the walls and empty spaces
+        renderer.renderEnvironment(env);
+
+        // Draw the agent on top of the grid
+        renderer.renderAgent(myAgent, env);
+
+        // Swap the hidden buffer to the screen and check for window close events
+        renderer.swapBuffers();
+        renderer.pollEvents();
     }
 
-    std::cout << "\n=== SIMULATION RESULTS ===\n";
-    if (myAgent.getPosition() == targetLocation)
-    {
-        std::cout << "SUCCESS: Agent successfully navigated the random minefield!\n";
-    }
-    else
-    {
-        std::cout << "FAILED: The agent could not reach the target. It might be completely walled off by random obstacles, or it ran out of steps!\n";
-    }
+    std::cout << "Simulation Closed.\n";
 
     // Matrix
     // std::cout << "=== MATRIX MATH MODULE TEST ===\n\n";

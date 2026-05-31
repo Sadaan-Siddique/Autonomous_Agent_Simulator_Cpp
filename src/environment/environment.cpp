@@ -45,6 +45,14 @@ void Environment::clearCell(const Vector2D& pos) {
     if(isInsideBounds(pos)) m_grid[pos.m_y][pos.m_x] = (int)CellType::EMPTY;
 }
 
+int Environment::getWidth() const {
+    return m_width; // Return your private width/cols variable
+}
+
+int Environment::getHeight() const {
+    return m_height; // Return your private height/rows variable
+}   
+
 // void Environment::placeRandomObstacles(int count, const Vector2D& currentPos, const Vector2D& targetLocation)
 void Environment::placeRandomObstacles(int count) {
 
