@@ -1,22 +1,23 @@
 #include "../../include/pathFinding/bfs.hpp"
 
 std::vector<Vector2D> BFS::findPath(
-    const Vector2D& start,
-    const Vector2D& goal,
-    const Environment& env)
+    const Vector2D &start,
+    const Vector2D &goal,
+    const Environment &env)
 {
     // This initializes the three core memory structures the algorithm needs to function.
-    std::queue<Vector2D> q; // q is the list of cells we need to check next. The first person to get in line is the first person to be served.
-    std::unordered_set<Vector2D, Vector2DHash> visited; // visited is the memory of cells we have already looked at so we don't check them twice.
+    std::queue<Vector2D> q;                                      // q is the list of cells we need to check next. The first person to get in line is the first person to be served.
+    std::unordered_set<Vector2D, Vector2DHash> visited;          // visited is the memory of cells we have already looked at so we don't check them twice.
     std::unordered_map<Vector2D, Vector2D, Vector2DHash> parent; // parent is our trail of breadcrumbs (who came from where).
 
     // We put the starting position into our queue to check, and immediately mark it as "visited" so we don't accidentally loop back to the start.
     q.push(start);
     visited.insert(start);
 
-    // Defines the four orthogonal directions the agent is allowed to look (Right, Left, Down, Up).
+    // Defines the eight directions the agent is allowed to look
     std::vector<Vector2D> directions = {
-        {1,0}, {-1,0}, {0,1}, {0,-1}
+        {1, 0}, {-1, 0}, {0, 1}, {0, -1}, // Orthogonal: Right, Left, Down, Up
+        {1, 1}, {-1, -1}, {1, -1}, {-1, 1} // Diagonal: Bottom-Right, Top-Left, Top-Right, Bottom-Left
     };
 
     // The Search Loop (The "Water Flood")
@@ -29,9 +30,25 @@ std::vector<Vector2D> BFS::findPath(
         if (current == goal) // If the cell we are currently standing on is our target, stop searching immediately! We found it!
             break;
 
-        for (const auto& dir : directions) // Look at all 4 neighboring cells around our current cell. Calculate the coordinate of that neighboring cell and call it next.
+        for (const auto &dir : directions) // Look at all 8 neighboring cells around our current cell. Calculate the coordinate of that neighboring cell and call it next.
         {
-            Vector2D next = current + dir; 
+            Vector2D next = current + dir;
+
+            // --- PREVENT DIAGONAL CORNER SQUEEZING ---
+            // If the move is diagonal (both X and Y changed)
+            if (dir.m_x != 0 && dir.m_y != 0)
+            {
+                // Check the two orthogonal cells adjacent to this diagonal move
+                Vector2D check1(current.m_x + dir.m_x, current.m_y);
+                Vector2D check2(current.m_x, current.m_y + dir.m_y);
+
+                // If BOTH adjacent cells are walls, the gap is closed.
+                // The agent cannot physically squeeze through. Skip this path.
+                if (env.isObstacle(check1) || env.isObstacle(check2))
+                {
+                    continue;
+                }
+            }
 
             // The filter. If the next cell is off the map, is a wall (#), or we have already visited it in the past, continue (skip it and move to the next direction).
             if (!env.isInsideBounds(next))

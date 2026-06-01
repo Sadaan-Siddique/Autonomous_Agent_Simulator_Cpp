@@ -13,11 +13,11 @@ int main()
     std::cout << "Starting Autonomous Agent Simulator (OpenGL Renderer)...\n";
 
     // 1. Initialize Simulation Data
-    Environment env(15, 10);
+    Environment env(15, 11);
     env.placeRandomObstacles(40);
 
     Vector2D startLocation(0, 0);
-    Vector2D targetLocation(14, 9);
+    Vector2D targetLocation(13, 8);
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 

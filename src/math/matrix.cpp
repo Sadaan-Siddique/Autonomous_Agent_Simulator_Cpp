@@ -113,7 +113,7 @@ Vector2D Matrix::operator*(const Vector2D &vec) const
     // Fallback if someone tries to multiply a Vector by a 3x3 or 4x4 matrix
     std::cout << "Error: Vector multiplication requires a 2x2 Matrix.\n";
     return vec; 
-}
+}   
 
 Matrix Matrix::transpose() const
 {

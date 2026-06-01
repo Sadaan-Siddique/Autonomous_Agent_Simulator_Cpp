@@ -14,7 +14,7 @@ Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor) : m_id(id), 
 
     // Initializing kinematics variables
     m_headingAngle = 0.0f; // 0 radians means facing perfectly Right/East
-    m_speed = 3.0f;   // Moves 3 grid units per second
+    m_speed = 3.0f;        // Moves 3 grid units per second
 }
 
 Vector2D Agent::getPosition() const { return m_position; }
@@ -24,7 +24,7 @@ void Agent::setTarget(const Vector2D &target) { m_target = target; }
 void Agent::move(Environment &env, float deltaTime)
 {
     // this logic is basically teleporting my agent from one point in grid to other point (position + velosity)
-    // Vector2D targetPosition = m_position + m_velocity; 
+    // Vector2D targetPosition = m_position + m_velocity;
 
     // if (env.isInsideBounds(targetPosition) && !env.isObstacle(targetPosition))
     // {
@@ -37,7 +37,6 @@ void Agent::move(Environment &env, float deltaTime)
     //     std::cout << "Agent " << m_id << " is blocked!\n";
     // }
 
-    
     // now, we no longer teleport our agent, we are implementing continuous motion, we use kinematic equation: Position = Position + (Velocity * Time).
     Vector2D targetPosition = m_position + (m_velocity * deltaTime);
     // Because targetPosition is now floating point (e.g., 1.5, 4.2),
@@ -125,6 +124,10 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
     // Target reached check requires a distance tolerance now, because we will rarely hit EXACTLY (14.000, 9.000)
     if (m_position.distance(m_target) < 0.1f)
     {
+        // THE FIX: Snap the agent perfectly to the target coordinate
+        // so OpenGL draws it exactly in the center of the cell!
+        m_position = m_target;
+
         std::cout << "Target Reached!\n";
         m_velocity = Vector2D(0, 0); // Stop Moving
         return;
@@ -141,16 +144,22 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
 
         Vector2D nextWayPoint = m_path[m_pathIndex];
 
+        // --- THE FRAME OVERSHOOT FIX ---
+        float distanceToWaypoint = m_position.distance(nextWayPoint);
+        float moveStep = m_speed * deltaTime; // How far the agent will travel this exact frame
+
         // 1. Check if we have arrived at the current waypoint
-        if (m_position.distance(nextWayPoint) < 0.1f)
+        if (moveStep >= distanceToWaypoint)
         {
-            m_pathIndex++;
-            return;
-        }
+            m_position = nextWayPoint;   // Snap perfectly to the waypoint
+            m_velocity = Vector2D(0, 0); // Halt velocity for this frame
+            m_pathIndex++;               // Queue up the next waypoint
+            return;                      // End the frame here so we don't call move()
+        }   
 
         // 2. Calculate the desired angle to the waypoint
         Vector2D deltaVec = nextWayPoint - m_position;
-        float desiredHeadingAngle = std::atan2(deltaVec.m_y, deltaVec.m_x); 
+        float desiredHeadingAngle = std::atan2(deltaVec.m_y, deltaVec.m_x);
 
         // In a future update, you can add a PID controller here to slowly transition m_heading to desiredHeading.
         // For now, the steering snaps instantly to the correct angle.
@@ -167,22 +176,30 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         Vector2D localForward(1.0f, 0.0f);
         Vector2D worldDir = rotationMatrix * localForward;
 
-        m_velocity = worldDir * m_speed; // worldDir is a rotated vector and m_speed is the scalar 
+        // --- PRECISION DRIFT FIX ---
+        // If the velocity is microscopic, snap it to a perfect 0.0 to prevent drift
+        if (std::abs(worldDir.m_x) < 0.001f) worldDir.m_x = 0.0f;
+        if (std::abs(worldDir.m_y) < 0.001f) worldDir.m_y = 0.0f;
+
+        m_velocity = worldDir * m_speed; // worldDir is a rotated vector and m_speed is the scalar
 
         // 5. Apply the physics
         move(env, deltaTime);
     }
     else
     {
-        // Old greedy logic remains untouched for now 
+        // Old greedy logic remains untouched for now
         // In computer science, a "Greedy Algorithm" is one that makes the most obvious, immediate best choice at the current moment without looking ahead at the big picture.
         Vector2D desiredDir = computeDirectionToTarget();
         int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
 
-        if (obstacleDistance == -1 || obstacleDistance > 1) {
+        if (obstacleDistance == -1 || obstacleDistance > 1)
+        {
             m_velocity = desiredDir;
             move(env, deltaTime);
-        } else {
+        }
+        else
+        {
             chooseAlternativeDirection(env);
             move(env, deltaTime);
         }
@@ -251,13 +268,15 @@ Vector2D Agent::computeDirectionToTarget() const
 
 void Agent::computePath(Environment &env)
 {
-    m_path = BFS::findPath(m_position, m_target, env);
+    // THE FIX: Snap the float position to the nearest integer grid cell for the algorithm
+    Vector2D gridStart(std::round(m_position.m_x), std::round(m_position.m_y));
+
+    // Pass the rounded grid position to BFS, not the raw floating point
+    m_path = BFS::findPath(gridStart, m_target, env);
 
     if (m_path.empty())
     {
         std::cout << "No path found! Target is physically unreachable.\n";
-        // Do NOT set m_usePathfinding = false;
-        // Just leave the path empty.
     }
     else
     {

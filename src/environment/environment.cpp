@@ -13,7 +13,10 @@ Environment::Environment(int width, int height) : m_width(width), m_height(heigh
 // }
 bool Environment::isInsideBounds(const Vector2D &pos) const
 {
-    return pos.m_x >= 0 && pos.m_x < m_width && pos.m_y >= 0 && pos.m_y < m_height;
+    // Add a tiny epsilon (-0.01f) to the zero-bounds to prevent floating-point
+    // precision from falsely flagging a perfect 0.0 as negative out-of-bounds.
+    return pos.m_x >= -0.01f && pos.m_x < m_width &&
+           pos.m_y >= -0.01f && pos.m_y < m_height;
 }
 
 bool Environment::isObstacle(const Vector2D &pos) const
