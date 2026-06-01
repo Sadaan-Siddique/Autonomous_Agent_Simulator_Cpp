@@ -7,16 +7,16 @@
 class Vector2D
 {
 public:
-    int m_x;
-    int m_y;
+    float m_x;
+    float m_y;
 
-    Vector2D(int x = 0, int y = 0);
+    Vector2D(float x = 0, float y = 0);
 
     Vector2D operator+(const Vector2D &) const; // position + direction
     Vector2D operator-(const Vector2D &) const;
     bool operator==(const Vector2D &) const;
     Vector2D &operator+=(const Vector2D &);
-    Vector2D operator*(int) const;
+    Vector2D operator*(float) const;
     friend std::ostream &operator<<(std::ostream &, const Vector2D &);
 
     void move(const Vector2D &velocity);
