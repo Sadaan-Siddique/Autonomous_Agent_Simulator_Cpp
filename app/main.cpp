@@ -45,14 +45,14 @@ int main()
         lastFrameTime = currentFrameTime;
 
         // --- A. LOGIC TICK (Runs every single frame now) ---
-        if (myAgent.getPosition().distance(targetLocation) > 0.1f)
+        if (myAgent.getPosition().distance(targetLocation) > 0.001f)
         {
             myAgent.decideNextMove(env, deltaTime);
         }
         else
         {
             // Optional: Print only once, or just let it idle.
-            // std::cout << "Target Reached!\n";
+            std::cout << "Target Reached!\n";
         }
 
         // --- B. RENDER FRAME (Runs as fast as possible) ---
