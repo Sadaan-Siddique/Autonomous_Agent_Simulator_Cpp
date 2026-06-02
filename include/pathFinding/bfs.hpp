@@ -1,4 +1,4 @@
-// BFS (Breadth First Search)
+// BFS (Breadth First Search) is like a blind flood of water; it searches in every possible direction equally until it happens to hit the target. It is incredibly slow and inefficient for large maps.
 #ifndef BFS_H
 #define BFS_H
 

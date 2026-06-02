@@ -288,7 +288,8 @@ void Agent::computePath(Environment &env)
     Vector2D gridStart(std::round(m_position.m_x), std::round(m_position.m_y));
 
     // Pass the rounded grid position to BFS, not the raw floating point
-    m_path = BFS::findPath(gridStart, m_target, env);
+    // m_path = BFS::findPath(gridStart, m_target, env); // For using BFS, uncomment this
+    m_path = AStar::findPath(gridStart, m_target, env);
 
     if (m_path.empty())
     {
