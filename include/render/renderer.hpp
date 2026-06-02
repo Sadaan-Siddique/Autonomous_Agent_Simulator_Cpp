@@ -15,22 +15,30 @@ private:
 
     // GPU Memory IDs
     unsigned int m_shaderProgram;
-    unsigned int m_VAO, m_VBO;
+    // GPU Memory IDs for different shapes
+    unsigned int m_quadVAO, m_quadVBO;
+    unsigned int m_lineVAO, m_lineVBO;   // For LIDAR beams
+    unsigned int m_arrowVAO, m_arrowVBO; // For the Agent arrow
+    unsigned int m_fovVAO, m_fovVBO; // For the translucent FOV fan
 
     // Internal Setup Functions
     void initShaders();
-    void initQuad();
+    void initPrimitives(); 
 
     // The core math drawing function
-    void drawQuad(float, float y, float width, float height, float r, float g, float b);
+    void drawQuad(float x, float y, float width, float height, float r, float g, float b) const;
+    void drawLine(float x1, float y1, float x2, float y2, float r, float g, float b, float a) const; // float a for transparency control
 
 public:
     Renderer(int screenWidth, int screenHeight, const char *title);
     ~Renderer();
 
+    // NEW: Allow main.cpp to access the window to read keyboard presses
+    GLFWwindow* getWindow() const;
+
     // Game loop Functions
     bool isRunning() const;
-    void clearScreen() const;
+    void clearScreen(bool isAlarmActive = false) const;
     void swapBuffers() const;
     void pollEvents() const;
 

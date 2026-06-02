@@ -18,8 +18,21 @@ Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor) : m_id(id), 
 }
 
 Vector2D Agent::getPosition() const { return m_position; }
+float Agent::getHeading() const { return m_headingAngle; }
+bool Agent::isUnreachable() const { return m_isUnreachable; }
 void Agent::setVelocity(const Vector2D &velocity) { m_velocity = velocity; }
 void Agent::setTarget(const Vector2D &target) { m_target = target; }
+
+void Agent::reset(const Vector2D& startPos)
+{
+    m_position = startPos;
+    m_velocity = Vector2D(0, 0);
+    m_headingAngle = 0.0f;
+    m_path.clear();
+    m_pathIndex = 0;
+    m_currentPointCloud.clear();
+    m_isUnreachable = false; // RESET THE ALARM
+}
 
 void Agent::move(Environment &env, float deltaTime)
 {
@@ -279,11 +292,13 @@ void Agent::computePath(Environment &env)
 
     if (m_path.empty())
     {
-        std::cout << "No path found! Target is physically unreachable.\n";
+        // TRIGGER THE ALARM
+        m_isUnreachable = true; 
+        std::cout << "\n[ALARM] Target Location Blocked! Press Ctrl + R to reload the simulation.\n";
     }
     else
     {
-        // FIX: Start at index 1, because index 0 is the cell the agent is already standing on!
+        m_isUnreachable = false; // Safe
         m_pathIndex = 1;
     }
 }
