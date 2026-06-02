@@ -218,3 +218,19 @@ void Renderer::renderAgent(const Agent& agent, const Environment& env) {
     // It is shrunk by 0.95f so it fits perfectly inside the cell boundaries we established in renderEnvironment.
     drawQuad(screenX, screenY, cellWidth * 0.95f, cellHeight * 0.95f, 0.2f, 0.8f, 0.2f);
 }
+
+void Renderer::renderLidar(const Agent& agent, const Environment& env) {
+    float cellWidth = 2.0f / (float)env.getWidth();
+    float cellHeight = 2.0f / (float)env.getHeight();
+
+    // Get the point cloud from the agent
+    std::vector<Vector2D> hits = agent.getPointCloud();
+
+    for (const auto& hit : hits) {
+        float screenX = -1.0f + (hit.m_x * cellWidth);
+        float screenY = 1.0f - ((hit.m_y + 1) * cellHeight);
+
+        // Draw small red squares (0.2f multiplier makes them tiny dots)
+        drawQuad(screenX, screenY, cellWidth * 0.2f, cellHeight * 0.2f, 1.0f, 0.0f, 0.0f);
+    }
+}

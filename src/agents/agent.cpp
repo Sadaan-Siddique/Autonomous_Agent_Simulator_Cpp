@@ -53,10 +53,13 @@ void Agent::move(Environment &env, float deltaTime)
     }
 }
 
-int Agent::sense(Environment &env) const
+void Agent::sense(Environment &env)
 {
-    return m_sensor->detect(m_position, m_velocity, env);
+    // Generate the point cloud and save it to the agent's memory
+    m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
 }
+
+std::vector<Vector2D> Agent::getPointCloud() const { return m_currentPointCloud; }
 
 // I'm changing this decide next move function because of Waypoint Navigation
 // The BFS path is now treated as a list of exact physical coordinates.
@@ -186,24 +189,24 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         // 5. Apply the physics
         move(env, deltaTime);
     }
-    else
-    {
-        // Old greedy logic remains untouched for now
-        // In computer science, a "Greedy Algorithm" is one that makes the most obvious, immediate best choice at the current moment without looking ahead at the big picture.
-        Vector2D desiredDir = computeDirectionToTarget();
-        int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
+    // else
+    // {
+    //     // Old greedy logic remains untouched for now
+    //     // In computer science, a "Greedy Algorithm" is one that makes the most obvious, immediate best choice at the current moment without looking ahead at the big picture.
+    //     Vector2D desiredDir = computeDirectionToTarget();
+    //     int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
 
-        if (obstacleDistance == -1 || obstacleDistance > 1)
-        {
-            m_velocity = desiredDir;
-            move(env, deltaTime);
-        }
-        else
-        {
-            chooseAlternativeDirection(env);
-            move(env, deltaTime);
-        }
-    }
+    //     if (obstacleDistance == -1 || obstacleDistance > 1)
+    //     {
+    //         m_velocity = desiredDir;
+    //         move(env, deltaTime);
+    //     }
+    //     else
+    //     {
+    //         chooseAlternativeDirection(env);
+    //         move(env, deltaTime);
+    //     }
+    // }
 }
 
 // Standard std::atan(val) only takes a single value and returns angles between \(-\frac{\pi }{2}\) and \(\frac{\pi }{2}\) (Quadrants I and IV). std::atan2 handles all four quadrants safely. It also Prevents Division-by-Zero

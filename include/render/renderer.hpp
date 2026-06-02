@@ -37,6 +37,7 @@ public:
     // Simulation rendering
     void renderEnvironment(const Environment &env);
     void renderAgent(const Agent &agent, const Environment &env);
+    void renderLidar(const Agent& agent, const Environment& env);
 };
 
 #endif

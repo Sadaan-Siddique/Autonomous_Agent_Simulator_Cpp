@@ -1,69 +1,68 @@
 #include <iostream>
-// Step out of 'app' and into 'include' to grab your headers
+#include <cmath> // Required for M_PI
+
+// Include headers
 #include "../include/environment/environment.hpp"
 #include "../include/agents/agent.hpp"
-#include "../include/sensors/distanceSensor.hpp"
+#include "../include/sensors/lidarSensor.hpp" // NEW: Lidar Sensor
 #include "../include/render/renderer.hpp"
 
-// GLFW gives us access to time functions needed for the tick-rate
 #include <GLFW/glfw3.h>
 
 int main()
 {
-    std::cout << "Starting Autonomous Agent Simulator (OpenGL Renderer)...\n";
+    std::cout << "Starting Autonomous Agent Simulator V5.1...\n";
 
     // 1. Initialize Simulation Data
-    Environment env(15, 11);
+    Environment env(15, 10);
     env.placeRandomObstacles(40);
 
     Vector2D startLocation(0, 0);
-    Vector2D targetLocation(13, 8);
+    Vector2D targetLocation(14, 9);
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 
-    DistanceSensor mySensor(3);
-    Agent myAgent(1, startLocation, &mySensor);
+    // 2. Initialize LIDAR & Agent
+    // Range: 5.0 units, FOV: 360 degrees (2 * PI radians), Rays: 36
+    LidarSensor roofLidar(5.0f, 2.0f * M_PI, 36);
+    Agent myAgent(1, startLocation, &roofLidar);
     myAgent.setTarget(targetLocation);
 
-    // Explicitly place the agent on the grid so the environment knows it's there
     env.placeAgent(myAgent.getPosition());
 
-    // 2. Initialize the Graphics Window
-    // This will open a 800x600 window with the specified title
-    Renderer renderer(800, 600, "Autonomous Agent Simulator V5.1");
+    // 3. Initialize the Graphics Window
+    Renderer renderer(800, 600, "Autonomous Agent Simulator V5.1 (LIDAR)");
 
-    // 3. Time Management for Kinematics
-    // We completely remove tickRate. We need to track exact frame times.
+    // Time Management
     double lastFrameTime = glfwGetTime();
 
     // 4. The Main Game Loop
     while (renderer.isRunning())
     {
-        // Calculate deltaTime (the fraction of a second the last frame took)
+        // Calculate deltaTime
         double currentFrameTime = glfwGetTime();
         float deltaTime = static_cast<float>(currentFrameTime - lastFrameTime);
         lastFrameTime = currentFrameTime;
 
-        // --- A. LOGIC TICK (Runs every single frame now) ---
-        if (myAgent.getPosition().distance(targetLocation) > 0.001f)
-        {
-            myAgent.decideNextMove(env, deltaTime);
-        }
-        else
-        {
-            // Optional: Print only once, or just let it idle.
-            std::cout << "Target Reached!\n";
-        }
+        // --- A. LOGIC TICK ---
+        // 1. The Brain: Decide the next steering angle and move
+        myAgent.decideNextMove(env, deltaTime);
+        
+        // 2. The Eyes: Fire the lasers from the new position
+        myAgent.sense(env); 
 
-        // --- B. RENDER FRAME (Runs as fast as possible) ---
+        // --- B. RENDER FRAME ---
         renderer.clearScreen();
-        renderer.renderEnvironment(env);    // Draw the walls and empty spaces
-        renderer.renderAgent(myAgent, env); // Draw the agent on top of the grid
-        renderer.swapBuffers();             // Swap the hidden buffer to the screen and check for window close events
+        renderer.renderEnvironment(env);
+        renderer.renderAgent(myAgent, env);
+        
+        // NEW: Draw the Point Cloud
+        renderer.renderLidar(myAgent, env); 
+        
+        renderer.swapBuffers();
         renderer.pollEvents();
     }
 
     std::cout << "Simulation Closed.\n";
-
     return 0;
 }

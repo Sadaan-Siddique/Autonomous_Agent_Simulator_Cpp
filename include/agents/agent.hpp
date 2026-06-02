@@ -24,6 +24,7 @@ class Agent {
         float m_headingAngle; // The angle the agent is currently facing (in radians)
         float m_speed; // How fast the agent drives (units per second)
 
+        std::vector<Vector2D> m_currentPointCloud; // Stores the latest LIDAR scan
 
     public:
         Agent(int, const Vector2D&, Sensor* );
@@ -35,8 +36,11 @@ class Agent {
 
         void move(Environment&, float deltaTime); // 'deltaTime' to properly calculate physics over time
 
-        int sense(Environment& ) const;
+        void sense(Environment& );
 
+        // Add a getter so the Renderer can draw the dots
+        std::vector<Vector2D> getPointCloud() const;
+        
         // Autonomous Logic
         void decideNextMove(Environment&, float deltaTime);
         void chooseAlternativeDirection(Environment& );
