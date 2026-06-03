@@ -3,9 +3,9 @@
 
 LidarSensor::LidarSensor(float range, float fov, int rayCount) : m_range(range), m_fov(fov), m_rayCount(rayCount) {}
 
-std::vector<Vector2D> LidarSensor::scan(const Vector2D &agentPos, float heading, const Environment &env) const
+std::vector<std::pair<Vector2D,bool>> LidarSensor::scan(const Vector2D &agentPos, float heading, const Environment &env) const
 {
-    std::vector<Vector2D> pointCloud;
+    std::vector<std::pair<Vector2D,bool>> pointCloud;
 
     // Calculate the angle between each ray
     float angleStep = (m_rayCount > 1) ? (m_fov / (float)(m_rayCount - 1)) : 0.0f;
@@ -29,6 +29,9 @@ std::vector<Vector2D> LidarSensor::scan(const Vector2D &agentPos, float heading,
         Vector2D rayDir = rotationMatrix * localForward;
 
         // --- THE RAYCAST ---
+        bool hitWall = false;
+        Vector2D finalPos = agentPos;
+
         // Step forward along the ray in small increments (0.5 units)
         for(float step = 0.0f; step <= m_range; step += 0.5f)
         {
@@ -36,16 +39,19 @@ std::vector<Vector2D> LidarSensor::scan(const Vector2D &agentPos, float heading,
 
             // If the ray goes off the map, stop this ray
             if (!env.isInsideBounds(checkPos)) {
-                break;
+                break; // Stop ray, but it didn't hit a physical mapped wall
             }
 
             // If the ray hits a wall, record the exact float coordinate and stop this ray!
             if (env.isObstacle(checkPos)) {
-                pointCloud.push_back(checkPos);
-                break; 
+                hitWall = true;
+                finalPos = checkPos;
+                break; // Stop ray, recorded a wall hit!
             }
+            finalPos = checkPos; // Keep extending the line through empty space
         }
-
+        // Push the final coordinate AND the reason it stopped in pointCloud
+        pointCloud.push_back({finalPos, hitWall});
     }
     return pointCloud;
 }

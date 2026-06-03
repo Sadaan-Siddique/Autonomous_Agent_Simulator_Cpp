@@ -19,7 +19,7 @@ public:
     LidarSensor(float range, float fov, int rayCount);
 
     // heading is the exact angle that the "front" of the agent is currently facing (like the direction of its chest)
-    std::vector<Vector2D> scan(const Vector2D &agentPos, float heading, const Environment &env) const override;
+    std::vector<std::pair<Vector2D,bool>> scan(const Vector2D &agentPos, float heading, const Environment &env) const override;
 };
 
 #endif

@@ -157,7 +157,7 @@ void Renderer::initPrimitives()
     glGenBuffers(1, &m_fovVBO);
     glBindVertexArray(m_fovVAO);
     glBindBuffer(GL_ARRAY_BUFFER, m_fovVBO);
-    glBufferData(GL_ARRAY_BUFFER, 400 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 4000 * sizeof(float), NULL, GL_DYNAMIC_DRAW); 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 }
@@ -256,6 +256,47 @@ void Renderer::renderEnvironment(const Environment &env)
     }
 }
 
+// Add this new function to draw the internal memory
+void Renderer::renderInternalMap(const Agent& agent, int width, int height) {
+    float cellWidth = 2.0f / (float)width;
+    float cellHeight = 2.0f / (float)height;
+
+    const auto& map = agent.getInternalMap();
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            float screenX = -1.0f + (x * cellWidth);
+            float screenY = 1.0f - ((y + 1) * cellHeight);
+
+            if (map[y][x] == -1) {
+                // FOG OF WAR: Pitch Black
+                drawQuad(screenX, screenY, cellWidth, cellHeight, 0.05f, 0.05f, 0.05f);
+            } 
+            else if (map[y][x] == 1) {
+                // DISCOVERED WALL: Light Grey
+                drawQuad(screenX, screenY, cellWidth, cellHeight, 0.6f, 0.6f, 0.6f);
+            }
+            else {
+                // DISCOVERED EMPTY SPACE: Dark Charcoal
+                drawQuad(screenX, screenY, cellWidth, cellHeight, 0.15f, 0.15f, 0.15f);
+            }
+        }
+    }
+}
+
+void Renderer::renderTarget(const Vector2D& target, int width, int height) const
+{
+    float cellWidth = 2.0f / (float)width;
+    float cellHeight = 2.0f / (float)height;
+    
+    // Convert grid coordinates to screen coordinates
+    float screenX = -1.0f + (target.m_x * cellWidth);
+    float screenY = 1.0f - ((target.m_y + 1.0f) * cellHeight);
+
+    // Draw a Bright Blue square to represent the finish line
+    drawQuad(screenX, screenY, cellWidth * 0.95f, cellHeight * 0.95f, 0.2f, 0.6f, 1.0f);
+}
+
 void Renderer::renderAgent(const Agent &agent, const Environment &env)
 {
     float cellWidth = 2.0f / (float)env.getWidth();
@@ -328,7 +369,7 @@ void Renderer::renderLidar(const Agent &agent, const Environment &env)
     float startX = -1.0f + (pos.m_x * cellWidth) + (cellWidth / 2.0f);
     float startY = 1.0f - ((pos.m_y + 1.0f) * cellHeight) + (cellHeight / 2.0f);
 
-    std::vector<Vector2D> hits = agent.getPointCloud();
+    std::vector<std::pair<Vector2D, bool>> hits = agent.getPointCloud();
     if (hits.empty()) return;
 
 // --- 1. Draw the Translucent Fan ---
@@ -337,8 +378,9 @@ void Renderer::renderLidar(const Agent &agent, const Environment &env)
     fanVertices.push_back(startY);
 
     for (const auto& hit : hits) {
-        float endX = -1.0f + (hit.m_x * cellWidth) + (cellWidth / 2.0f);
-        float endY = 1.0f - ((hit.m_y + 1.0f) * cellHeight) + (cellHeight / 2.0f);
+        // hit is now a std::pair! Use hit.first to access the Vector2D
+        float endX = -1.0f + (hit.first.m_x * cellWidth) + (cellWidth / 2.0f);
+        float endY = 1.0f - ((hit.first.m_y + 1.0f) * cellHeight) + (cellHeight / 2.0f);
         fanVertices.push_back(endX);
         fanVertices.push_back(endY);
     }

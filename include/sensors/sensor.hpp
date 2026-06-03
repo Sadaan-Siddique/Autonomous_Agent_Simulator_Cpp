@@ -2,6 +2,7 @@
 #define SENSOR_H
 
 #include <vector>
+#include <utility> // for std::pair
 #include "../core/vector2d.hpp"
 #include "../environment/environment.hpp"
 
@@ -23,8 +24,8 @@ class Sensor {
         // Constructors can't be virtual
         virtual ~Sensor() = default; // destructors must be virtual if you plan to use Polymorphism.
 
-        // Now returns a Point Cloud (a list of hit coordinates)
-        virtual std::vector<Vector2D> scan(const Vector2D& agentPos, float heading, const Environment& env) const = 0; // The = 0 syntax defines a Pure Virtual Function.
+        // Now returns the coordinate AND whether it hit a solid wall (true) or empty space (false)
+        virtual std::vector<std::pair<Vector2D,bool>> scan(const Vector2D& agentPos, float heading, const Environment& env) const = 0; // The = 0 syntax defines a Pure Virtual Function.
         // It tells the compiler, "This function exists, but it has no body (no instructions) in this class.".                                                                                                                    
         //  It forces any "child" class (like distanceSensor) to provide its own logic for that function. If a child doesn't, it also becomes abstract and cannot be used.
         // No, the = 0 is a special marker, not a mathematical assignment. You cannot use = string or = 5. If you remove = 0, the function becomes a regular "Virtual Function," and you must provide a body (e.g., { return 0; })

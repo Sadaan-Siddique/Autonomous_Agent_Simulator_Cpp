@@ -10,14 +10,13 @@
 
 #include <vector>
 #include "../core/vector2d.hpp"
-// #include "../environment/environment.hpp"
+#include "../environment/environment.hpp"
 
 class AStar
 {
 public:
     // The main pathfinding function
-    // static std::vector<Vector2D> findPath(const Vector2D &start, const Vector2D &goal, const Environment &env);
-    static std::vector<Vector2D> findPath(const Vector2D& start, const Vector2D& goal, const std::vector<std::vector<int>>& grid); // Replacing 'Environment' with a raw 2D integer grid
+    static std::vector<Vector2D> findPath(const Vector2D &start, const Vector2D &goal, const Environment &env);
 
 private:
     // The "Heuristic" (The magnet that pulls A* toward the target)

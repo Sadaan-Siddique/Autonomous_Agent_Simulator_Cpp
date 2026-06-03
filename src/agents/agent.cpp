@@ -2,24 +2,23 @@
 #include <cmath>
 
 // 1. What is Waypoint Navigation?
-
 // Imagine using Google Maps. It doesn't just draw a single straight line from your house to a restaurant; it gives you a series of intermediate steps (turn right on Main St, go straight for 2 miles, turn left on 4th Ave).
-
 // Waypoint Navigation is the exact same concept for autonomous robotics. Instead of giving the robot one final destination, you feed it a list of intermediate coordinates (waypoints). The robot's physics engine only worries about driving in a straight line to the very next waypoint. Once it hits that waypoint, it aims at the next one, playing "connect the dots" until it reaches the final target.
 
-Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor) : m_id(id), m_position(startPosition), m_velocity(0, 0), m_sensor(sensor)
+Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor, int mapWidth, int mapHeight) : m_id(id), m_position(startPosition), m_velocity(0, 0), m_sensor(sensor)
 {
-    // Note: If you want the agent to appear on the grid the moment it is created,
-    // you will need to call env.placeAgent() in your main.cpp right after initializing the agent.
-
     // Initializing kinematics variables
     m_headingAngle = 0.0f; // 0 radians means facing perfectly Right/East
     m_speed = 3.0f;        // Moves 3 grid units per second
+
+    m_internalMap = std::vector<std::vector<int>>(mapHeight, std::vector<int>(mapWidth, -1));
 }
 
 Vector2D Agent::getPosition() const { return m_position; }
 float Agent::getHeading() const { return m_headingAngle; }
 bool Agent::isUnreachable() const { return m_isUnreachable; }
+std::vector<std::pair<Vector2D, bool>> Agent::getPointCloud() const { return m_currentPointCloud; }
+const std::vector<std::vector<int>>& Agent::getInternalMap() const { return m_internalMap; }
 void Agent::setVelocity(const Vector2D &velocity) { m_velocity = velocity; }
 void Agent::setTarget(const Vector2D &target) { m_target = target; }
 
@@ -32,6 +31,43 @@ void Agent::reset(const Vector2D& startPos)
     m_pathIndex = 0;
     m_currentPointCloud.clear();
     m_isUnreachable = false; // RESET THE ALARM
+
+    // Wipe the SLAM memory back to Fog of War!
+    for (int y = 0; y < m_internalMap.size(); y++) {
+        for (int x = 0; x < m_internalMap[0].size(); x++) {
+            m_internalMap[y][x] = -1;
+        }
+    }
+}
+
+void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit) {
+    // dx and dy (Delta X / Delta Y): The absolute total distance the line travels horizontally and vertically. If you shoot a laser from (0,0) to (4, 3), dx is 4, and dy is 3.
+    // sx and sy (Step X / Step Y): The direction the line is moving. If the laser shoots to the Right, sx is 1. If it shoots to the Left, sx is -1.
+    int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    // err (The Error Accumulator): Because a grid is made of square blocks, you can't draw a perfectly smooth diagonal line. You have to choose which square block best represents the line. The err variable tracks how far "off-center" the true mathematical line is from the grid blocks.
+    // e2 (Error x 2): A temporary variable. When the err accumulator gets too high, the algorithm uses e2 to trigger a "step" in the X or Y direction to correct the path and bring the blocks back to the center of the line.
+    int err = dx + dy, e2;
+
+    // In this specific function, width and height belong strictly to the Agent's internal map (m_internalMap), not the global Environment.
+    int width = m_internalMap[0].size();
+    int height = m_internalMap.size();
+
+    while (true) {
+        if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) {
+            // If this is the absolute end of the laser line AND it hit a physical object
+            if (x0 == x1 && y0 == y1 && isHit) {
+                m_internalMap[y0][x0] = 1; // Mark as Wall
+            } else {
+                m_internalMap[y0][x0] = 0; // Mark as Empty Space
+            }
+        }
+        
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
 }
 
 void Agent::move(Environment &env, float deltaTime)
@@ -70,9 +106,18 @@ void Agent::sense(Environment &env)
 {
     // Generate the point cloud and save it to the agent's memory
     m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
+
+    int startX = std::round(m_position.m_x);
+    int startY = std::round(m_position.m_y);
+
+    // Process every laser ray to update the internal map
+    for (const auto& ray : m_currentPointCloud) {
+        int endX = std::round(ray.first.m_x);
+        int endY = std::round(ray.first.m_y);
+        bresenhamTrace(startX, startY, endX, endY, ray.second);
+    }
 }
 
-std::vector<Vector2D> Agent::getPointCloud() const { return m_currentPointCloud; }
 
 // I'm changing this decide next move function because of Waypoint Navigation
 // The BFS path is now treated as a list of exact physical coordinates.
@@ -151,11 +196,29 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
 
     if (m_usePathfinding)
     {
-        if (m_path.empty() || m_pathIndex >= m_path.size())
+        // --- 1. DYNAMIC REPLANNING (SLAM) ---
+        bool pathBlocked = false;
+        
+        // Scan our current upcoming path against our newly updated memory
+        for (int i = m_pathIndex; i < m_path.size(); i++) {
+            int px = std::round(m_path[i].m_x);
+            int py = std::round(m_path[i].m_y);
+            
+            // --- THE BOUNDARY SAFETY FIX ---
+            // Ensure float-rounding hasn't pushed the index outside the map memory!
+            if (px >= 0 && px < m_internalMap[0].size() && py >= 0 && py < m_internalMap.size()) {
+                if (m_internalMap[py][px] == 1) { 
+                    pathBlocked = true;
+                    break;
+                }
+            }
+        }
+
+        // If the path is empty, or the LIDAR just proved it's blocked, recalculate!
+        if (m_path.empty() || pathBlocked)
         {
             computePath(env);
-            if (m_path.empty())
-                return;
+            if (m_path.empty()) return;
         }
 
         Vector2D nextWayPoint = m_path[m_pathIndex];
@@ -282,14 +345,17 @@ Vector2D Agent::computeDirectionToTarget() const
     return Vector2D(0, 0);
 }
 
-void Agent::computePath(Environment &env)
+void Agent::computePath(Environment &env) // keep 'env' in signature for interface, but don't use it!
 {
     // THE FIX: Snap the float position to the nearest integer grid cell for the algorithm
     Vector2D gridStart(std::round(m_position.m_x), std::round(m_position.m_y));
 
     // Pass the rounded grid position to BFS, not the raw floating point
     // m_path = BFS::findPath(gridStart, m_target, env); // For using BFS, uncomment this
-    m_path = AStar::findPath(gridStart, m_target, env);
+    // m_path = AStar::findPath(gridStart, m_target, env); 
+
+    // Pass the internal map not the environment
+    m_path = AStar::findPath(gridStart, m_target, m_internalMap); 
 
     if (m_path.empty())
     {
@@ -301,5 +367,12 @@ void Agent::computePath(Environment &env)
     {
         m_isUnreachable = false; // Safe
         m_pathIndex = 1;
+
+        // --- THE MICRO-DISTANCE FIX ---
+        // If A* says we are already in the target cell, add the exact float target
+        // to the path so m_pathIndex = 1 doesn't crash the engine!
+        if (m_path.size() == 1) {
+            m_path.push_back(m_target);
+        }
     }
 }

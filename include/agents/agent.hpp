@@ -26,14 +26,24 @@ class Agent {
         float m_headingAngle; // The angle the agent is currently facing (in radians)
         float m_speed; // How fast the agent drives (units per second)
 
-        std::vector<Vector2D> m_currentPointCloud; // Stores the latest LIDAR scan
+        std::vector<std::pair<Vector2D, bool>> m_currentPointCloud; // Stores the latest LIDAR scan
+        std::vector<std::vector<int>> m_internalMap; // The Agent's memory for SLAM Mapping
+
+        // Bresenham's algorithm to trace LIDAR rays, The algorithm's job is to look at the start and end points, and figure out every single grid cell the laser passed through in between them.
+        // By making it private, you guarantee that the only thing allowed to alter the agent's memory is the agent's own LIDAR sensor.
+        void bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit);
+        // x0, y0 (Start): This is the Agent's exact physical location on the grid. It is the origin point of the LIDAR laser.
+        // x1, y1 (End): This is where the LIDAR laser finally stopped. It either hit a wall, or it reached its maximum range and faded out into empty space.
 
     public:
-        Agent(int, const Vector2D&, Sensor* );
+        // For SLAM, agent needs to know how big its memory array should be 
+        Agent(int id, const Vector2D& startPosition, Sensor* sensor, int mapWidth, int mapHeight);
 
         Vector2D getPosition() const;
         float getHeading() const;
         bool isUnreachable() const;   // Getter for the renderer
+        std::vector<std::pair<Vector2D, bool>> getPointCloud() const; // Add a getter so the Renderer can draw the dots
+        const std::vector<std::vector<int>>& getInternalMap() const;
 
         void setVelocity(const Vector2D& );
         void setTarget(const Vector2D& target);
@@ -45,16 +55,12 @@ class Agent {
 
         void sense(Environment& );
 
-        // Add a getter so the Renderer can draw the dots
-        std::vector<Vector2D> getPointCloud() const;
-
         // Autonomous Logic
         void decideNextMove(Environment&, float deltaTime);
         void chooseAlternativeDirection(Environment& );
         Vector2D computeDirectionToTarget() const;
 
         void computePath(Environment& env);
-
 
 };
 

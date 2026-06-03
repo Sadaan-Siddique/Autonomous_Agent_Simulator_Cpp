@@ -8,8 +8,8 @@
 
 #include <GLFW/glfw3.h>
 
-using std::cout;
 using std::cin;
+using std::cout;
 using std::endl;
 
 int main()
@@ -46,20 +46,29 @@ int main()
     cout << "Enter LIDAR Ray Count (number of lasers, e.g. 36): ";
     cin >> lidarRays;
 
-
     // --- SAFETY CLAMPS ---
     // Ensure target doesn't exceed array bounds (width - 1)
-    if (targetX < 0) targetX = 0; if (targetX >= width) targetX = width - 1;
-    if (targetY < 0) targetY = 0; if (targetY >= height) targetY = height - 1;
+    if (targetX < 0)
+        targetX = 0;
+    if (targetX >= width)
+        targetX = width - 1;
+    if (targetY < 0)
+        targetY = 0;
+    if (targetY >= height)
+        targetY = height - 1;
 
     // Ensure we don't try to spawn more obstacles than cells exist
     int maxObstacles = (width * height) - 2; // Leave room for Agent and Target
-    if (obstacleCount > maxObstacles) obstacleCount = maxObstacles;
-    if (obstacleCount < 0) obstacleCount = 0;
+    if (obstacleCount > maxObstacles)
+        obstacleCount = maxObstacles;
+    if (obstacleCount < 0)
+        obstacleCount = 0;
 
     // Ensure valid sensor math
-    if (lidarRays < 2) lidarRays = 2; // Prevent divide by zero in angle step
-    if (lidarRange <= 0.1f) lidarRange = 5.0f;
+    if (lidarRays < 2)
+        lidarRays = 2; // Prevent divide by zero in angle step
+    if (lidarRange <= 0.1f)
+        lidarRange = 5.0f;
 
     // Convert degrees to radians for the math engine
     float lidarFOVRadians = lidarFOVDegrees * (M_PI / 180.0f);
@@ -71,14 +80,14 @@ int main()
     env.placeRandomObstacles(obstacleCount); // Dynamic
 
     Vector2D startLocation(0, 0); // Always fixed
-    Vector2D targetLocation(targetX, targetY); 
-    
+    Vector2D targetLocation(targetX, targetY);
+
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 
     // 2. Initialize LIDAR & Agent
     LidarSensor roofLidar(lidarRange, lidarFOVRadians, lidarRays); // Dynamic
-    Agent myAgent(1, startLocation, &roofLidar);
+    Agent myAgent(1, startLocation, &roofLidar, width, height);
     myAgent.setTarget(targetLocation);
     env.placeAgent(myAgent.getPosition());
 
@@ -88,7 +97,7 @@ int main()
     double lastFrameTime = glfwGetTime();
     bool isPaused = false;
     bool spaceWasPressed = false;
-    bool rWasPressed = false; 
+    bool rWasPressed = false;
     float timeScale = 1.0f;
 
     // 4. The Main Game Loop
@@ -105,31 +114,31 @@ int main()
         bool spaceIsPressed = (glfwGetKey(win, GLFW_KEY_SPACE) == GLFW_PRESS);
         if (spaceIsPressed && !spaceWasPressed)
         {
-            isPaused = !isPaused; 
+            isPaused = !isPaused;
         }
         spaceWasPressed = spaceIsPressed;
 
         // 2. Speed Control (Up/Down Arrows)
         if (glfwGetKey(win, GLFW_KEY_UP) == GLFW_PRESS)
         {
-            timeScale += 0.01f; 
+            timeScale += 0.01f;
         }
         if (glfwGetKey(win, GLFW_KEY_DOWN) == GLFW_PRESS)
         {
-            timeScale -= 0.01f; 
+            timeScale -= 0.01f;
             if (timeScale < 0.1f)
-                timeScale = 0.1f; 
+                timeScale = 0.1f;
         }
 
-
         // --- 3. RESTART SIMULATION (Ctrl + R) ---
-        bool ctrlIsPressed = (glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
+        bool ctrlIsPressed = (glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
                               glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS);
         bool rIsPressed = (glfwGetKey(win, GLFW_KEY_R) == GLFW_PRESS);
 
-        if (ctrlIsPressed && rIsPressed && !rWasPressed) {
+        if (ctrlIsPressed && rIsPressed && !rWasPressed)
+        {
             env.clearCell(myAgent.getPosition());
-            
+
             // Use the dynamic obstacle count here too!
             env.placeRandomObstacles(obstacleCount);
             env.clearCell(startLocation);
@@ -137,21 +146,24 @@ int main()
 
             myAgent.reset(startLocation);
             env.placeAgent(myAgent.getPosition());
-            
+
             cout << "Simulation Reset!\n";
         }
         rWasPressed = rIsPressed;
 
         // --- A. LOGIC TICK ---
+        // In autonomous robotics, the software loop must follow the Sense-Plan-Act architecture. The robot must look at the world, update its map, plan a route, and then drive.
         if (!isPaused)
         {
+            myAgent.sense(env); // pehle sense krega phir move decide karega
             myAgent.decideNextMove(env, deltaTime * timeScale);
-            myAgent.sense(env);
         }
 
         // --- B. RENDER FRAME ---
         renderer.clearScreen(myAgent.isUnreachable());
-        renderer.renderEnvironment(env);
+        // renderer.renderEnvironment(env);
+        renderer.renderInternalMap(myAgent, width, height); // Draw the Fog of War instead of the master map
+        renderer.renderTarget(targetLocation, width, height); // Draw the target destination so we can see it in the dark!
         renderer.renderAgent(myAgent, env);
         renderer.renderLidar(myAgent, env);
 
