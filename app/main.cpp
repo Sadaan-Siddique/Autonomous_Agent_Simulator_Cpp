@@ -162,7 +162,7 @@ int main()
         // --- B. RENDER FRAME ---
         renderer.clearScreen(myAgent.isUnreachable());
         // renderer.renderEnvironment(env);
-        renderer.renderInternalMap(myAgent, width, height); // Draw the Fog of War instead of the master map
+        renderer.renderInternalMap(myAgent, env); // Draw the Fog of War instead of the master map
         renderer.renderTarget(targetLocation, width, height); // Draw the target destination so we can see it in the dark!
         renderer.renderAgent(myAgent, env);
         renderer.renderLidar(myAgent, env);

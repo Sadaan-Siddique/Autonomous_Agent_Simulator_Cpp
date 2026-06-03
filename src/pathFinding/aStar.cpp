@@ -67,8 +67,9 @@ std::vector<Vector2D> AStar::findPath(const Vector2D& start, const Vector2D& goa
 
         for (const auto &dir : directions)
         {
-            int nextX = std::round(current.m_x + dir.m_x);
-            int nextY = std::round(current.m_y + dir.m_y);
+            // Use (int) casting to match the physics engine's truncation!
+            int nextX = (int)(current.m_x + dir.m_x);
+            int nextY = (int)(current.m_y + dir.m_y);
 
             // --- GRID BOUNDARY CHECK ---
             if(nextX < 0 || nextX >= width || nextY < 0 || nextY >= height) continue;
@@ -79,8 +80,8 @@ std::vector<Vector2D> AStar::findPath(const Vector2D& start, const Vector2D& goa
 
             // --- STRICT DIAGONAL CORNER CLEARANCE ---
             if (dir.m_x != 0 && dir.m_y != 0) {
-                int currX = std::round(current.m_x);
-                int currY = std::round(current.m_y);
+                int currX = (int)current.m_x; 
+                int currY = (int)current.m_y; 
                 // If either adjacent orthogonal cell is a known wall (1), block the diagonal
                 if (grid[currY][nextX] == 1 || grid[nextY][currX] == 1) {
                     continue; 

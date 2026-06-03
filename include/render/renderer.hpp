@@ -44,7 +44,7 @@ public:
 
     // Simulation rendering
     void renderEnvironment(const Environment &env);
-    void renderInternalMap(const Agent& agent, int width, int height);
+    void renderInternalMap(const Agent& agent, const Environment& env);
     void renderTarget(const Vector2D& target, int width, int height) const;
     void renderAgent(const Agent &agent, const Environment &env);
     void renderLidar(const Agent& agent, const Environment& env);

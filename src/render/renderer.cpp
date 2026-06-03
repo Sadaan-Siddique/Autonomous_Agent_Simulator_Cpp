@@ -257,28 +257,38 @@ void Renderer::renderEnvironment(const Environment &env)
 }
 
 // Add this new function to draw the internal memory
-void Renderer::renderInternalMap(const Agent& agent, int width, int height) {
-    float cellWidth = 2.0f / (float)width;
-    float cellHeight = 2.0f / (float)height;
-
+void Renderer::renderInternalMap(const Agent& agent, const Environment& env) {
+    float cellWidth = 2.0f / (float)env.getWidth();
+    float cellHeight = 2.0f / (float)env.getHeight();
     const auto& map = agent.getInternalMap();
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
+    // Minor padding adjustment to create crisp, clean grid separators
+    float padding = 0.93f; 
+
+    for (int y = 0; y < env.getHeight(); y++) {
+        for (int x = 0; x < env.getWidth(); x++) {
             float screenX = -1.0f + (x * cellWidth);
             float screenY = 1.0f - ((y + 1) * cellHeight);
 
+            // --- 1. UNEXPLORED TERRITORY (FOG OF WAR) ---
             if (map[y][x] == -1) {
-                // FOG OF WAR: Pitch Black
-                drawQuad(screenX, screenY, cellWidth, cellHeight, 0.05f, 0.05f, 0.05f);
+                if (env.isObstacle(Vector2D(x, y))) {
+                    // Ghost Obstacle: Deep, translucent tactical crimson
+                    drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.22f, 0.05f, 0.07f);
+                } else {
+                    // Hidden Empty Space: Low-contrast midnight obsidian
+                    drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.03f, 0.04f, 0.06f);
+                }
             } 
+            // --- 2. EXPLORED OBSTACLES (CONFIRMED WALLS) ---
             else if (map[y][x] == 1) {
-                // DISCOVERED WALL: Light Grey
-                drawQuad(screenX, screenY, cellWidth, cellHeight, 0.6f, 0.6f, 0.6f);
+                // Bright Warning Amber: Pops out dramatically against dark cells
+                drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.85f, 0.42f, 0.12f);
             }
+            // --- 3. EXPLORED FLOOR (CONFIRMED SAFE ZONE) ---
             else {
-                // DISCOVERED EMPTY SPACE: Dark Charcoal
-                drawQuad(screenX, screenY, cellWidth, cellHeight, 0.15f, 0.15f, 0.15f);
+                // Sleek Slate Blue-Gray: Looks clean and clearly distinct from walls
+                drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.14f, 0.16f, 0.22f);
             }
         }
     }
@@ -293,8 +303,8 @@ void Renderer::renderTarget(const Vector2D& target, int width, int height) const
     float screenX = -1.0f + (target.m_x * cellWidth);
     float screenY = 1.0f - ((target.m_y + 1.0f) * cellHeight);
 
-    // Draw a Bright Blue square to represent the finish line
-    drawQuad(screenX, screenY, cellWidth * 0.95f, cellHeight * 0.95f, 0.2f, 0.6f, 1.0f);
+    // Neon Cyber-Cyan: Stands out perfectly in both dark fog and lit paths
+    drawQuad(screenX, screenY, cellWidth * 0.93f, cellHeight * 0.93f, 0.0f, 0.85f, 0.95f);
 }
 
 void Renderer::renderAgent(const Agent &agent, const Environment &env)

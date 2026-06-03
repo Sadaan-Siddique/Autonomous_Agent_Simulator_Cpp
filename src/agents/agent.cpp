@@ -99,6 +99,11 @@ void Agent::move(Environment &env, float deltaTime)
     else
     {
         std::cout << "Agent " << m_id << " is blocked by physics collision!\n";
+
+        // If physics blocks the car, stop the engine and wipe the route!
+        // This forces the decideNextMove function to recalculate A* on the very next frame.
+        m_velocity = Vector2D(0, 0); 
+        m_path.clear();
     }
 }
 
@@ -107,13 +112,13 @@ void Agent::sense(Environment &env)
     // Generate the point cloud and save it to the agent's memory
     m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
 
-    int startX = std::round(m_position.m_x);
-    int startY = std::round(m_position.m_y);
+    int startX = (int)m_position.m_x;
+    int startY = (int)m_position.m_y;
 
     // Process every laser ray to update the internal map
     for (const auto& ray : m_currentPointCloud) {
-        int endX = std::round(ray.first.m_x);
-        int endY = std::round(ray.first.m_y);
+        int endX = (int)ray.first.m_x;
+        int endY = (int)ray.first.m_y;
         bresenhamTrace(startX, startY, endX, endY, ray.second);
     }
 }
@@ -201,9 +206,9 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         
         // Scan our current upcoming path against our newly updated memory
         for (int i = m_pathIndex; i < m_path.size(); i++) {
-            int px = std::round(m_path[i].m_x);
-            int py = std::round(m_path[i].m_y);
-            
+            int px = (int)m_path[i].m_x;
+            int py = (int)m_path[i].m_y;
+
             // --- THE BOUNDARY SAFETY FIX ---
             // Ensure float-rounding hasn't pushed the index outside the map memory!
             if (px >= 0 && px < m_internalMap[0].size() && py >= 0 && py < m_internalMap.size()) {
@@ -214,8 +219,8 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
             }
         }
 
-        // If the path is empty, or the LIDAR just proved it's blocked, recalculate!
-        if (m_path.empty() || pathBlocked)
+        // If the path is empty, blocked, OR we have exhausted all waypoints, REPLAN!
+        if (m_path.empty() || pathBlocked || m_pathIndex >= m_path.size())
         {
             computePath(env);
             if (m_path.empty()) return;
@@ -348,7 +353,7 @@ Vector2D Agent::computeDirectionToTarget() const
 void Agent::computePath(Environment &env) // keep 'env' in signature for interface, but don't use it!
 {
     // THE FIX: Snap the float position to the nearest integer grid cell for the algorithm
-    Vector2D gridStart(std::round(m_position.m_x), std::round(m_position.m_y));
+    Vector2D gridStart((int)m_position.m_x, (int)m_position.m_y);
 
     // Pass the rounded grid position to BFS, not the raw floating point
     // m_path = BFS::findPath(gridStart, m_target, env); // For using BFS, uncomment this
