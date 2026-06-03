@@ -46,6 +46,7 @@ class PathSmoother { // Using Gradient Descent Smoothing (often called the "Rubb
     // Takes the raw A* path, applies the math, and returns a curvy, physics-friendly path
     static std::vector<Vector2D> smoothPath(
         const std::vector<Vector2D>& originalPath, 
+        const std::vector<std::vector<int>>& grid, // pass the map
         float dataWeight,    // Alpha (e.g., 0.1)
         float smoothWeight,  // Beta  (e.g., 0.5)
         float tolerance      // When to stop calculating (e.g., 0.001)

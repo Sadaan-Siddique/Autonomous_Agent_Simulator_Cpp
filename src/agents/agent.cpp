@@ -382,7 +382,7 @@ void Agent::computePath(Environment &env) // keep 'env' in signature for interfa
 
         // --- 2. TRAJECTORY OPTIMIZATION ---
         // Pass the jagged path through our rubber-band algorithm!
-        // Alpha: 0.1 (Data Weight), Beta: 0.5 (Smooth Weight), Tolerance: 0.001
-        m_path = PathSmoother::smoothPath(m_path, 0.1f, 0.5f, 0.001f);
+        // Alpha: 0.1 (Data Weight), Beta: 0.2 (Smooth Weight), Tolerance: 0.001
+        m_path = PathSmoother::smoothPath(m_path, m_internalMap, 0.1f, 0.2f, 0.001f);
     }
 }

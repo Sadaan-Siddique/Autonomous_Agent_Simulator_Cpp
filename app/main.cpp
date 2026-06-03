@@ -82,6 +82,11 @@ int main()
     Vector2D startLocation(0, 0); // Always fixed
     Vector2D targetLocation(targetX, targetY);
 
+    // --- THE FIX: Carve a 2x2 Safe Zone so the agent is never trapped! ---
+    env.clearCell(Vector2D(0, 0));
+    env.clearCell(Vector2D(1, 0));
+    env.clearCell(Vector2D(0, 1));
+    env.clearCell(Vector2D(1, 1));
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 
