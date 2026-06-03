@@ -7,6 +7,7 @@
 #include "../sensors/sensor.hpp"
 // #include "../pathFinding/bfs.hpp" // For using BFS, uncomment this
 #include "../pathFinding/aStar.hpp"
+#include "../pathFinding/pathSmoother.hpp"
 
 // Using Composition and aggregations
 class Agent {

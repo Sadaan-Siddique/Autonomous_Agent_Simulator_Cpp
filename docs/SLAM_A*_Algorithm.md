@@ -19,6 +19,8 @@ Complete Simulator Hierarchy
     🔥 Phase 5: The Custom Engine Overhaul (DSA from Scratch) and Implementing SLAM(Simultaneous localization and mapping)
 
         Rip out the C++ Standard Template Library (STL) and replace it with your own custom-built data structures to optimize memory and speed. And Implement SLAM 
+    
+    Phase 6: Trajectory Optimization (Applying Gradient Descent Smoothing (often called the "Rubber Band" algorithm))
 
 
 Before Phase 5:

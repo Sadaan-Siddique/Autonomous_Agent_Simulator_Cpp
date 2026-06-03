@@ -379,5 +379,10 @@ void Agent::computePath(Environment &env) // keep 'env' in signature for interfa
         if (m_path.size() == 1) {
             m_path.push_back(m_target);
         }
+
+        // --- 2. TRAJECTORY OPTIMIZATION ---
+        // Pass the jagged path through our rubber-band algorithm!
+        // Alpha: 0.1 (Data Weight), Beta: 0.5 (Smooth Weight), Tolerance: 0.001
+        m_path = PathSmoother::smoothPath(m_path, 0.1f, 0.5f, 0.001f);
     }
 }
