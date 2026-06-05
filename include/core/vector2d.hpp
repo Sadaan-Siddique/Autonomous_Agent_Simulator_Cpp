@@ -17,6 +17,7 @@ public:
     bool operator==(const Vector2D &) const;
     Vector2D &operator+=(const Vector2D &);
     Vector2D operator*(float) const;
+    Vector2D &operator*=(float);
     friend std::ostream &operator<<(std::ostream &, const Vector2D &);
 
     void move(const Vector2D &velocity);
@@ -24,6 +25,8 @@ public:
     double distance(const Vector2D &) const;
 
     double magnitude() const;
+
+    void normalize();
 };
 
 // Vector2DHash (The Custom Hasher)

@@ -55,7 +55,7 @@ void Agent::reset(const Vector2D &startPos)
     }
 }
 
-void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit)
+void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Environment &env)
 {
     // dx and dy (Delta X / Delta Y): The absolute total distance the line travels horizontally and vertically. If you shoot a laser from (0,0) to (4, 3), dx is 4, and dy is 3.
     // sx and sy (Step X / Step Y): The direction the line is moving. If the laser shoots to the Right, sx is 1. If it shoots to the Left, sx is -1.
@@ -69,6 +69,9 @@ void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit)
     int width = m_internalMap[0].size();
     int height = m_internalMap.size();
 
+    // Get the absolute physical static grid to verify before erasing
+    const auto& realGrid = env.getGrid();
+
     while (true)
     {
         if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height)
@@ -79,9 +82,11 @@ void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit)
             }
             else
             {
-                // --- THE MEMORY PROTECTION FIX ---
-                // ONLY mark as empty if we don't already know there's a wall here!
-                if (m_internalMap[y0][x0] != 1)
+                // --- THE PERFECT CLEARING FIX ---
+                // Agar physical environment mein yahan koi Static Obstacle (1) nahi hai,
+                // Sirf tabhi is block ko erase karo. Ye Ghost Trails ko mita dega 
+                // lekin Grazing Rays se static deewaron ko mehfooz rakhega!
+                if (realGrid[y0][x0] != 1) 
                 {
                     m_internalMap[y0][x0] = 0;
                 }
@@ -173,20 +178,56 @@ void Agent::move(Environment &env, float deltaTime)
     }
 }
 
+// void Agent::sense(Environment &env)
+// {
+//     // Generate the point cloud and save it to the agent's memory
+//     m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
+
+//     int startX = (int)m_position.m_x;
+//     int startY = (int)m_position.m_y;
+
+//     // Process every laser ray to update the internal map
+//     for (const auto &ray : m_currentPointCloud)
+//     {
+//         int endX = (int)ray.first.m_x;
+//         int endY = (int)ray.first.m_y;
+//         bresenhamTrace(startX, startY, endX, endY, ray.second, env);
+//     }
+// }
+
 void Agent::sense(Environment &env)
 {
-    // Generate the point cloud and save it to the agent's memory
+    // --- 1. THE BULLETPROOF GHOST ERASER ---
+    // Puraani FOV wali logic hata di hai. Ab hum memory se har us deewar ko 
+    // foran mita denge jo physical static grid (orange walls) ka hissa nahi hai.
+    int mapW = m_internalMap[0].size();
+    int mapH = m_internalMap.size();
+    const auto& realGrid = env.getGrid();
+
+    for (int y = 0; y < mapH; y++) {
+        for (int x = 0; x < mapW; x++) {
+            // Agar agent ki memory mein deewar (1) hai, lekin physical Environment 
+            // ki static grid mein nahi hai (matlab wo ek pink moving block tha)...
+            if (m_internalMap[y][x] == 1 && realGrid[y][x] != 1) {
+                m_internalMap[y][x] = 0; // ...to us GHOST TRAIL ko foran erase kar do!
+            }
+        }
+    }
+
+    // --- 2. NORMAL LIDAR SCAN ---
+    // Puraani trails mitane ke baad, ab normally scan karo.
+    // Jo pink obstacles abhi LIDAR ke samne honge, wo dobara apni nayi current position par draw ho jayenge.
     m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
 
     int startX = (int)m_position.m_x;
     int startY = (int)m_position.m_y;
 
-    // Process every laser ray to update the internal map
-    for (const auto &ray : m_currentPointCloud)
-    {
+    for (const auto &ray : m_currentPointCloud) {
         int endX = (int)ray.first.m_x;
         int endY = (int)ray.first.m_y;
-        bresenhamTrace(startX, startY, endX, endY, ray.second);
+        
+        // Ye function static walls ko mehfooz rakhega aur naye hits ko map karega
+        bresenhamTrace(startX, startY, endX, endY, ray.second, env); 
     }
 }
 

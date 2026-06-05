@@ -18,8 +18,12 @@ private:
 public:
     LidarSensor(float range, float fov, int rayCount);
 
+    float getRange() const override;
+    float getFOV() const override;
+    int getRayCount() const override;
+
     // heading is the exact angle that the "front" of the agent is currently facing (like the direction of its chest)
-    std::vector<std::pair<Vector2D,bool>> scan(const Vector2D &agentPos, float heading, const Environment &env) const override;
+    std::vector<std::pair<Vector2D, bool>> scan(const Vector2D &agentPos, float heading, const Environment &env) const override;
 };
 
 #endif

@@ -30,6 +30,13 @@ Vector2D Vector2D::operator*(float scalar) const
     return Vector2D(m_x * scalar, m_y * scalar);
 }
 
+Vector2D& Vector2D::operator*=(float scalar)
+{
+    m_x *= scalar;
+    m_y *= scalar;
+    return *this; // Modifies the current object directly
+}
+
 std::ostream &operator<<(std::ostream &os, const Vector2D &v)
 {
     os << "(" << v.m_x << ", " << v.m_y << ")";
@@ -52,4 +59,13 @@ double Vector2D::distance(const Vector2D &target) const
 double Vector2D::magnitude() const
 {
     return std::sqrt(m_x * m_x + m_y * m_y);
+}
+
+void Vector2D::normalize()
+{
+    double mag = this->magnitude();
+    if (mag > 0.0) { // Safety check to prevent dividing by zero!
+        this->m_x = this->m_x / mag;
+        this->m_y = this->m_y / mag;
+    }
 }

@@ -415,3 +415,22 @@ void Renderer::renderLidar(const Agent &agent, const Environment &env)
         drawLine(startX, startY, fanVertices[(i+1)*2], fanVertices[(i+1)*2+1], 0.8f, 0.0f, 0.0f, 1.0f);
     }
 }
+
+// environment se moving blocks ki float positions le ga, aur unko ek dangerous Neon Magenta/Crimson color mein draw karega taake wo static orange walls se alag aur khatarnaak nazar aayein!
+void Renderer::renderDynamicObstacles(const Environment& env) const
+{
+    float cellWidth = 2.0f / (float)env.getWidth();
+    float cellHeight = 2.0f / (float)env.getHeight();
+
+    for (const auto& obs : env.getDynamicObstacles()) {
+        Vector2D pos = obs.getPosition();
+
+        // Kyunke humne dynamic obstacles ko center (0.5f offset) par place kiya tha,
+        // Screen par draw karne ke liye humein unko wapas thora shift karna parega top-left corner ki taraf.
+        float screenX = -1.0f + ((pos.m_x - 0.5f) * cellWidth);
+        float screenY = 1.0f - ((pos.m_y + 0.5f) * cellHeight);
+
+        // Neon Crimson / Magenta Color (R: 0.9, G: 0.1, B: 0.3) for Moving Targets!
+        drawQuad(screenX, screenY, cellWidth * 0.95f, cellHeight * 0.95f, 0.9f, 0.1f, 0.3f);
+    }
+}

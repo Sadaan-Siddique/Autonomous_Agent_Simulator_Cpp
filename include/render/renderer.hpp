@@ -48,6 +48,7 @@ public:
     void renderTarget(const Vector2D& target, int width, int height) const;
     void renderAgent(const Agent &agent, const Environment &env);
     void renderLidar(const Agent& agent, const Environment& env);
+    void renderDynamicObstacles(const Environment& env) const;
 };
 
 #endif

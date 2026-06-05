@@ -129,16 +129,16 @@ int main()
         rWasPressed = rIsPressed;
 
         // --- A. LOGIC TICK (FIXED TIMESTEP PIPELINE) ---
-        // Add the real elapsed time to our bucket
         accumulator += frameTime * timeScale;
 
-        // Consume time from the bucket in exact 60Hz chunks
         while (accumulator >= FIXED_TIME_STEP)
         {
             if (!isPaused)
             {
+                // 1. Pehle moving blocks ki physics update karo!
+                env.updateDynamicObstacles((float)FIXED_TIME_STEP, myAgent.getPosition()); 
+                
                 myAgent.sense(env); 
-                // Pass the LOCKED step to the agent, so the PID Derivative is stable!
                 myAgent.decideNextMove(env, (float)FIXED_TIME_STEP); 
             }
             accumulator -= FIXED_TIME_STEP;
@@ -147,6 +147,10 @@ int main()
         // --- B. RENDER FRAME ---
         renderer.clearScreen(myAgent.isUnreachable());
         renderer.renderInternalMap(myAgent, env); 
+        
+        // 2. Apne naye moving blocks ko yahan render karo!
+        renderer.renderDynamicObstacles(env);     
+        
         renderer.renderTarget(targetLocation, width, height); 
         renderer.renderAgent(myAgent, env);
         renderer.renderLidar(myAgent, env);
