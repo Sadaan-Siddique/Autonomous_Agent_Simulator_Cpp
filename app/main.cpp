@@ -19,8 +19,7 @@ int main()
     cout << "==========================================\n";
 
     // --- PRE-SIMULATION INPUT ---
-    int width, height, targetX, targetY, obstacleCount, lidarRays;
-    float lidarRange, lidarFOVDegrees;
+    int width, height, targetX, targetY, obstacleCount;
 
     // 1. Grid Dimensions
     cout << "Enter The width of Grid (integer X value): ";
@@ -38,60 +37,37 @@ int main()
     cout << "Enter number of random obstacles to spawn: ";
     cin >> obstacleCount;
 
-    // 4. Sensor Specs
-    cout << "Enter LIDAR Range (in grid units, e.g. 5.0): ";
-    cin >> lidarRange;
-    cout << "Enter LIDAR Field of View (in degrees, 1 to 360): ";
-    cin >> lidarFOVDegrees;
-    cout << "Enter LIDAR Ray Count (number of lasers, e.g. 36): ";
-    cin >> lidarRays;
+    // 4. Sensor Specs (Hardcoded)
+    float lidarRange = 6.0f;
+    float lidarFOVDegrees = 180.0f;
+    int lidarRays = 30;
 
     // --- SAFETY CLAMPS ---
-    // Ensure target doesn't exceed array bounds (width - 1)
-    if (targetX < 0)
-        targetX = 0;
-    if (targetX >= width)
-        targetX = width - 1;
-    if (targetY < 0)
-        targetY = 0;
-    if (targetY >= height)
-        targetY = height - 1;
+    if (targetX < 0) targetX = 0;
+    if (targetX >= width) targetX = width - 1;
+    if (targetY < 0) targetY = 0;
+    if (targetY >= height) targetY = height - 1;
 
-    // Ensure we don't try to spawn more obstacles than cells exist
-    int maxObstacles = (width * height) - 2; // Leave room for Agent and Target
-    if (obstacleCount > maxObstacles)
-        obstacleCount = maxObstacles;
-    if (obstacleCount < 0)
-        obstacleCount = 0;
+    int maxObstacles = (width * height) - 2; 
+    if (obstacleCount > maxObstacles) obstacleCount = maxObstacles;
+    if (obstacleCount < 0) obstacleCount = 0;
 
-    // Ensure valid sensor math
-    if (lidarRays < 2)
-        lidarRays = 2; // Prevent divide by zero in angle step
-    if (lidarRange <= 0.1f)
-        lidarRange = 5.0f;
-
-    // Convert degrees to radians for the math engine
     float lidarFOVRadians = lidarFOVDegrees * (M_PI / 180.0f);
 
     cout << "\nInitializing graphics engine...\n";
 
     // 1. Initialize Simulation Data
     Environment env(width, height);
-    env.placeRandomObstacles(obstacleCount); // Dynamic
+    env.placeRandomObstacles(obstacleCount); 
 
-    Vector2D startLocation(0, 0); // Always fixed
-    Vector2D targetLocation(targetX, targetY);
+    Vector2D startLocation(0.5f, 0.5f); // Spawn exactly in the center of the first cell
+    Vector2D targetLocation(targetX, targetY); // Target the exact center
 
-    // --- THE FIX: Carve a 2x2 Safe Zone so the agent is never trapped! ---
-    env.clearCell(Vector2D(0, 0));
-    env.clearCell(Vector2D(1, 0));
-    env.clearCell(Vector2D(0, 1));
-    env.clearCell(Vector2D(1, 1));
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 
     // 2. Initialize LIDAR & Agent
-    LidarSensor roofLidar(lidarRange, lidarFOVRadians, lidarRays); // Dynamic
+    LidarSensor roofLidar(lidarRange, lidarFOVRadians, lidarRays); 
     Agent myAgent(1, startLocation, &roofLidar, width, height);
     myAgent.setTarget(targetLocation);
     env.placeAgent(myAgent.getPosition());
@@ -105,70 +81,73 @@ int main()
     bool rWasPressed = false;
     float timeScale = 1.0f;
 
+    // --- THE FIXED TIMESTEP VARIABLES ---
+    const double FIXED_TIME_STEP = 1.0 / 60.0; // Exactly 60Hz physics clock
+    double accumulator = 0.0;
+
     // 4. The Main Game Loop
     while (renderer.isRunning())
     {
         double currentFrameTime = glfwGetTime();
-        float deltaTime = static_cast<float>(currentFrameTime - lastFrameTime);
+        double frameTime = currentFrameTime - lastFrameTime;
         lastFrameTime = currentFrameTime;
+
+        // Prevent a "Spiral of Death" if the window lags or is dragged
+        if (frameTime > 0.25) frameTime = 0.25;
 
         // --- KEYBOARD CONTROLS ---
         GLFWwindow *win = renderer.getWindow();
 
-        // 1. Pause Toggle (Spacebar)
         bool spaceIsPressed = (glfwGetKey(win, GLFW_KEY_SPACE) == GLFW_PRESS);
-        if (spaceIsPressed && !spaceWasPressed)
-        {
+        if (spaceIsPressed && !spaceWasPressed) {
             isPaused = !isPaused;
         }
         spaceWasPressed = spaceIsPressed;
 
-        // 2. Speed Control (Up/Down Arrows)
-        if (glfwGetKey(win, GLFW_KEY_UP) == GLFW_PRESS)
-        {
+        if (glfwGetKey(win, GLFW_KEY_UP) == GLFW_PRESS) {
             timeScale += 0.01f;
         }
-        if (glfwGetKey(win, GLFW_KEY_DOWN) == GLFW_PRESS)
-        {
+        if (glfwGetKey(win, GLFW_KEY_DOWN) == GLFW_PRESS) {
             timeScale -= 0.01f;
-            if (timeScale < 0.1f)
-                timeScale = 0.1f;
+            if (timeScale < 0.1f) timeScale = 0.1f;
         }
 
-        // --- 3. RESTART SIMULATION (Ctrl + R) ---
         bool ctrlIsPressed = (glfwGetKey(win, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
                               glfwGetKey(win, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS);
         bool rIsPressed = (glfwGetKey(win, GLFW_KEY_R) == GLFW_PRESS);
 
-        if (ctrlIsPressed && rIsPressed && !rWasPressed)
-        {
+        if (ctrlIsPressed && rIsPressed && !rWasPressed) {
             env.clearCell(myAgent.getPosition());
-
-            // Use the dynamic obstacle count here too!
             env.placeRandomObstacles(obstacleCount);
             env.clearCell(startLocation);
             env.clearCell(targetLocation);
 
             myAgent.reset(startLocation);
             env.placeAgent(myAgent.getPosition());
-
             cout << "Simulation Reset!\n";
         }
         rWasPressed = rIsPressed;
 
-        // --- A. LOGIC TICK ---
-        // In autonomous robotics, the software loop must follow the Sense-Plan-Act architecture. The robot must look at the world, update its map, plan a route, and then drive.
-        if (!isPaused)
+        // --- A. LOGIC TICK (FIXED TIMESTEP PIPELINE) ---
+        // Add the real elapsed time to our bucket
+        accumulator += frameTime * timeScale;
+
+        // Consume time from the bucket in exact 60Hz chunks
+        while (accumulator >= FIXED_TIME_STEP)
         {
-            myAgent.sense(env); // pehle sense krega phir move decide karega
-            myAgent.decideNextMove(env, deltaTime * timeScale);
+            if (!isPaused)
+            {
+                myAgent.sense(env); 
+                // Pass the LOCKED step to the agent, so the PID Derivative is stable!
+                myAgent.decideNextMove(env, (float)FIXED_TIME_STEP); 
+            }
+            accumulator -= FIXED_TIME_STEP;
         }
 
         // --- B. RENDER FRAME ---
         renderer.clearScreen(myAgent.isUnreachable());
-        // renderer.renderEnvironment(env);
-        renderer.renderInternalMap(myAgent, env); // Draw the Fog of War instead of the master map
-        renderer.renderTarget(targetLocation, width, height); // Draw the target destination so we can see it in the dark!
+        renderer.renderInternalMap(myAgent, env); 
+        renderer.renderTarget(targetLocation, width, height); 
         renderer.renderAgent(myAgent, env);
         renderer.renderLidar(myAgent, env);
 

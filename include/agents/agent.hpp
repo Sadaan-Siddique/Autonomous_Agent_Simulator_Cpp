@@ -26,6 +26,12 @@ class Agent {
         // Continuous Physical Properties
         float m_headingAngle; // The angle the agent is currently facing (in radians)
         float m_speed; // How fast the agent drives (units per second)
+        float m_angularVelocity; // How fast the agent is currently spinning
+
+        // PID Controller Variables
+        float m_kp, m_ki, m_kd; // PID constants. Tuning these three numbers (Kp, Ki, Kd) changes how aggressive or sluggish the car feels.
+        float m_previousError;
+        float m_integral;
 
         std::vector<std::pair<Vector2D, bool>> m_currentPointCloud; // Stores the latest LIDAR scan
         std::vector<std::vector<int>> m_internalMap; // The Agent's memory for SLAM Mapping
@@ -58,8 +64,6 @@ class Agent {
 
         // Autonomous Logic
         void decideNextMove(Environment&, float deltaTime);
-        void chooseAlternativeDirection(Environment& );
-        Vector2D computeDirectionToTarget() const;
 
         void computePath(Environment& env);
 

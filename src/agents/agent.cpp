@@ -8,8 +8,18 @@
 Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor, int mapWidth, int mapHeight) : m_id(id), m_position(startPosition), m_velocity(0, 0), m_sensor(sensor)
 {
     // Initializing kinematics variables
-    m_headingAngle = 0.0f; // 0 radians means facing perfectly Right/East
-    m_speed = 3.0f;        // Moves 3 grid units per second
+    m_headingAngle = 0.0f;    // 0 radians means facing perfectly Right/East
+    m_speed = 3.0f;           // Moves 3 grid units per second
+    m_angularVelocity = 0.0f; // Starts out not spinning
+
+    // --- INITIALIZE PID GAINS ---
+    // You will tune these later to find the perfect physical steering feel
+    m_kp = 1.5f; // Proportional (How aggressive it steers, left/right wobbling)
+    m_ki = 0.0f; // Integral (Fixes mechanical drift - 0 for simulation)
+    m_kd = 0.5f; // Derivative (The brakes that prevent overshooting/wobbling, dampening)
+
+    m_previousError = 0.0f;
+    m_integral = 0.0f;
 
     m_internalMap = std::vector<std::vector<int>>(mapHeight, std::vector<int>(mapWidth, -1));
 }
@@ -18,14 +28,17 @@ Vector2D Agent::getPosition() const { return m_position; }
 float Agent::getHeading() const { return m_headingAngle; }
 bool Agent::isUnreachable() const { return m_isUnreachable; }
 std::vector<std::pair<Vector2D, bool>> Agent::getPointCloud() const { return m_currentPointCloud; }
-const std::vector<std::vector<int>>& Agent::getInternalMap() const { return m_internalMap; }
+const std::vector<std::vector<int>> &Agent::getInternalMap() const { return m_internalMap; }
 void Agent::setVelocity(const Vector2D &velocity) { m_velocity = velocity; }
 void Agent::setTarget(const Vector2D &target) { m_target = target; }
 
-void Agent::reset(const Vector2D& startPos)
+void Agent::reset(const Vector2D &startPos)
 {
     m_position = startPos;
     m_velocity = Vector2D(0, 0);
+    m_angularVelocity = 0.0f;
+    m_previousError = 0.0f;
+    m_integral = 0.0f;
     m_headingAngle = 0.0f;
     m_path.clear();
     m_pathIndex = 0;
@@ -33,14 +46,17 @@ void Agent::reset(const Vector2D& startPos)
     m_isUnreachable = false; // RESET THE ALARM
 
     // Wipe the SLAM memory back to Fog of War!
-    for (int y = 0; y < m_internalMap.size(); y++) {
-        for (int x = 0; x < m_internalMap[0].size(); x++) {
+    for (int y = 0; y < m_internalMap.size(); y++)
+    {
+        for (int x = 0; x < m_internalMap[0].size(); x++)
+        {
             m_internalMap[y][x] = -1;
         }
     }
 }
 
-void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit) {
+void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit)
+{
     // dx and dy (Delta X / Delta Y): The absolute total distance the line travels horizontally and vertically. If you shoot a laser from (0,0) to (4, 3), dx is 4, and dy is 3.
     // sx and sy (Step X / Step Y): The direction the line is moving. If the laser shoots to the Right, sx is 1. If it shoots to the Left, sx is -1.
     int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
@@ -53,20 +69,37 @@ void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit) {
     int width = m_internalMap[0].size();
     int height = m_internalMap.size();
 
-    while (true) {
-        if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) {
-            // If this is the absolute end of the laser line AND it hit a physical object
-            if (x0 == x1 && y0 == y1 && isHit) {
+    while (true)
+    {
+        if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height)
+        {
+            if (x0 == x1 && y0 == y1 && isHit)
+            {
                 m_internalMap[y0][x0] = 1; // Mark as Wall
-            } else {
-                m_internalMap[y0][x0] = 0; // Mark as Empty Space
+            }
+            else
+            {
+                // --- THE MEMORY PROTECTION FIX ---
+                // ONLY mark as empty if we don't already know there's a wall here!
+                if (m_internalMap[y0][x0] != 1)
+                {
+                    m_internalMap[y0][x0] = 0;
+                }
             }
         }
-        
-        if (x0 == x1 && y0 == y1) break;
+        if (x0 == x1 && y0 == y1)
+            break;
         e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
+        if (e2 >= dy)
+        {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
     }
 }
 
@@ -87,10 +120,47 @@ void Agent::move(Environment &env, float deltaTime)
     // }
 
     // now, we no longer teleport our agent, we are implementing continuous motion, we use kinematic equation: Position = Position + (Velocity * Time).
+   // Continuous motion using kinematic equation: Position = Position + (Velocity * Time)
     Vector2D targetPosition = m_position + (m_velocity * deltaTime);
-    // Because targetPosition is now floating point (e.g., 1.5, 4.2),
-    // Environment's isInsideBounds/isObstacle must cast it to int under the hood to check the grid array.
-    if (env.isInsideBounds(targetPosition) && !env.isObstacle(targetPosition))
+
+    // --- THE DIRECTIONAL BUMPER FIX ---
+    // Represents the physical width/hitbox of the agent's chassis
+    float radius = 0.38f;
+    bool collision = false;
+
+    // 1. Center Point Check: Ensures the absolute center of the agent never phases through a wall
+    if (!env.isInsideBounds(targetPosition) || env.isObstacle(targetPosition))
+    {
+        collision = true;
+    }
+    else
+    {
+        // 2. Vector Heading: Determine the actual direction the agent is physically moving
+        float moveAngle = m_headingAngle;
+        if (m_velocity.magnitude() > 0.01f)
+        {
+            moveAngle = std::atan2(m_velocity.m_y, m_velocity.m_x);
+        }
+
+        // 3. Directional 3-Point Cone: Casts "sensor probes" strictly in the direction of travel.
+        // This prevents the rear/sides from snagging on walls when moving forward or reversing.
+        // float angles[3] = {moveAngle, moveAngle - 0.6f, moveAngle + 0.6f};
+        float angles[3] = {moveAngle, moveAngle - 0.5f, moveAngle + 0.5f};
+
+        for (int i = 0; i < 3; i++)
+        {
+            Vector2D checkPos(targetPosition.m_x + std::cos(angles[i]) * radius,
+                              targetPosition.m_y + std::sin(angles[i]) * radius);
+
+            if (!env.isInsideBounds(checkPos) || env.isObstacle(checkPos))
+            {
+                collision = true;
+                break;
+            }
+        }
+    }
+
+    if (!collision)
     {
         env.clearCell(m_position);
         m_position = targetPosition;
@@ -98,12 +168,8 @@ void Agent::move(Environment &env, float deltaTime)
     }
     else
     {
-        std::cout << "Agent " << m_id << " is blocked by physics collision!\n";
-
-        // If physics blocks the car, stop the engine and wipe the route!
-        // This forces the decideNextMove function to recalculate A* on the very next frame.
-        m_velocity = Vector2D(0, 0); 
-        m_path.clear();
+        m_velocity = Vector2D(0, 0); // Hard brake on physical collision
+        std::cout << "Agent has been Stucked!\n";
     }
 }
 
@@ -116,273 +182,549 @@ void Agent::sense(Environment &env)
     int startY = (int)m_position.m_y;
 
     // Process every laser ray to update the internal map
-    for (const auto& ray : m_currentPointCloud) {
+    for (const auto &ray : m_currentPointCloud)
+    {
         int endX = (int)ray.first.m_x;
         int endY = (int)ray.first.m_y;
         bresenhamTrace(startX, startY, endX, endY, ray.second);
     }
 }
 
-
 // I'm changing this decide next move function because of Waypoint Navigation
 // The BFS path is now treated as a list of exact physical coordinates.
 // We calculate the delta vector between our current float position and the target waypoint,
 // convert it to a heading angle, and use the Matrix to steer the velocity vector.
 
-// void Agent::decideNextMove(Environment &env)
+// void Agent::decideNextMove(Environment &env, float deltaTime)
 // {
-//     if (m_position == m_target)
+//     // --- 1. TARGET REACHED FIX ---
+//     // Because computePath appends the exact target coordinate to the path array,
+//     // this 0.2f threshold guarantees the agent parks exactly on the desired dot.
+//     if (m_position.distance(m_target) < 0.5f)
 //     {
-//         std::cout << "Target reached!\n";
+//         m_position = m_target;
+//         m_velocity = Vector2D(0, 0);
+//         std::cout << "Target Reached!\n";
 //         return;
 //     }
 
-//     // 🔥 SWITCH HERE
 //     if (m_usePathfinding)
 //     {
-//         // --- BFS PATH FOLLOWING ---
+//         static int stuckFrames = 0;
+//         static Vector2D lastPos = m_position;
 
-//         if (m_path.empty() || m_pathIndex >= m_path.size())
+//         // Escape State Machine Variables
+//         static int escapeState = 0; // 0: Normal, 1: Drive to Safe Neighbor, 2: Pivot to Target
+//         static float escapeDirAngle = 0.0f;
+//         static int escapeMoveFrames = 0;
+
+//         // --- 2. COLLISION RECOVERY STATE MACHINE ---
+//         // Executes a 2-step maneuver when the agent is physically wedged against an obstacle
+//         if (escapeState > 0)
+//         {
+//             if (escapeState == 1)
+//             {
+//                 // STATE 1: Shift into 'Backgear' and drive directly into the previously verified safe cell
+//                 m_velocity = Vector2D(std::cos(escapeDirAngle), std::sin(escapeDirAngle)) * m_speed;
+//                 move(env, deltaTime);
+//                 escapeMoveFrames--;
+//                 if (escapeMoveFrames <= 0)
+//                     escapeState = 2; // Once physically clear, transition to rotation phase
+//             }
+//             else if (escapeState == 2)
+//             {
+//                 // STATE 2: Lock the brakes and pivot the chassis to face the actual target direction
+//                 Vector2D toTarget = m_target - m_position;
+//                 float desired = std::atan2(toTarget.m_y, toTarget.m_x);
+//                 float error = desired - m_headingAngle;
+                
+//                 // Keep angle mapped between -PI and PI
+//                 while (error > M_PI) error -= 2.0f * M_PI;
+//                 while (error < -M_PI) error += 2.0f * M_PI;
+
+//                 if (std::abs(error) > 0.1f)
+//                 {
+//                     // Apply rotation while keeping velocity at 0 (Pivot-in-place)
+//                     m_angularVelocity = error * 4.5f;
+//                     m_headingAngle += m_angularVelocity * deltaTime;
+//                     m_velocity = Vector2D(0, 0); 
+//                 }
+//                 else
+//                 {
+//                     // Recovery Complete: Hand control back to the normal navigation stack
+//                     escapeState = 0; 
+//                     computePath(env);
+//                 }
+//             }
+//             return; // Skip normal steering math while the recovery maneuver is active
+//         }
+
+//         // --- 3. DYNAMIC REPLANNING (SLAM Integration) ---
+//         // Scans the upcoming 3 waypoints against the freshly updated LIDAR memory map.
+//         // If a previously unseen obstacle blocks the upcoming path, trigger a recalculation.
+//         bool pathBlocked = false;
+//         if (!m_path.empty())
+//         {
+//             for (int i = m_pathIndex; i < std::min((int)m_path.size(), m_pathIndex + 3); i++)
+//             {
+//                 if (m_internalMap[(int)m_path[i].m_y][(int)m_path[i].m_x] == 1)
+//                 {
+//                     pathBlocked = true;
+//                     break;
+//                 }
+//             }
+//         }
+
+//         if (m_path.empty() || pathBlocked)
 //         {
 //             computePath(env);
-
-//             // NEW FIX: If it's STILL empty after computing, just stop.
 //             if (m_path.empty())
 //                 return;
 //         }
 
-//         Vector2D nextPos = m_path[m_pathIndex];
-
-//         m_velocity = nextPos - m_position;
-
-//         if (sense(env) == 1)
+//         // --- 4. WAYPOINT PRUNING (Distance Check) ---
+//         // Consumes waypoints as the agent drives over them.
+//         // while (m_pathIndex < m_path.size() && m_position.distance(m_path[m_pathIndex]) < 0.45f)
+//         // {
+//         //     m_pathIndex++;
+//         // }
+//         while (m_pathIndex < m_path.size() && m_position.distance(m_path[m_pathIndex]) < 0.3f)
 //         {
-//             std::cout << "Obstacle detected! Recomputing...\n";
+//             if (m_pathIndex == m_path.size() - 1 && m_position.distance(m_path[m_pathIndex]) >= 0.15f) {
+//                 break; 
+//             }
+//             m_pathIndex++;
+//         }
+//         if (m_pathIndex >= m_path.size())
+//         {
 //             computePath(env);
 //             return;
 //         }
 
-//         move(env);
-//         m_pathIndex++;
-//     }
-//     else
-//     {
-//         // --- OLD GREEDY LOGIC ---
-//         Vector2D desiredDir = computeDirectionToTarget();
+//         // --- 5. FULL PID KINEMATIC CONTROLLER ---
+//         Vector2D nextWayPoint = m_path[m_pathIndex];
+//         Vector2D deltaVec = nextWayPoint - m_position;
+        
+//         // Desired angle to the upcoming waypoint
+//         float desiredAngle = std::atan2(deltaVec.m_y, deltaVec.m_x);
+        
+//         // Calculate Error (Difference between where we are looking and where we want to look)
+//         float error = desiredAngle - m_headingAngle;
+//         while (error > M_PI) error -= 2.0f * M_PI;
+//         while (error < -M_PI) error += 2.0f * M_PI;
 
-//         int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
+//         // Apply Proportional, Integral, and Derivative forces for smooth, non-jittery steering
+//         m_integral += error * deltaTime;
+//         float derivative = (error - m_previousError) / deltaTime;
+//         m_angularVelocity = (m_kp * error) + (m_ki * m_integral) + (m_kd * derivative);
+//         m_previousError = error;
 
-//         if (obstacleDistance == -1 || obstacleDistance > 1)
+//         // Mechanical Limits (Slew Rate): Caps the physical turning speed of the chassis servos
+//         if (m_angularVelocity > 4.0f) m_angularVelocity = 4.0f;
+//         if (m_angularVelocity < -4.0f) m_angularVelocity = -4.0f;
+        
+//         m_headingAngle += m_angularVelocity * deltaTime;
+
+//         // --- 6. FLUID THROTTLE (Continuous Driving) ---
+//         // Uses a Cosine curve to tie speed to alignment. 
+//         // If facing the target (Error = 0), Cosine is 1.0 (100% speed).
+//         // If turning sharply, Cosine drops, forcing the agent to naturally slow down for corners.
+//         float alignment = std::cos(error);
+//         if (alignment < 0.1f) alignment = 0.1f; // Prevents the car from completely stopping or reversing
+        
+//         // Bypasses expensive Matrix multiplication by directly mapping heading to X/Y velocity
+//         m_velocity = Vector2D(std::cos(m_headingAngle), std::sin(m_headingAngle)) * (m_speed * alignment);
+
+//         // Apply physical movement
+//         move(env, deltaTime);
+
+//         // --- 7. STALL SENSING ---
+//         // If the velocity math tells the car to move, but the position hasn't changed,
+//         // it means the physics engine has hard-blocked the agent against a wall.
+//         if (m_position.distance(lastPos) < 0.005f)
 //         {
-//             m_velocity = desiredDir;
-//             move(env);
+//             stuckFrames++;
 //         }
 //         else
 //         {
-//             chooseAlternativeDirection(env);
-//             move(env);
+//             stuckFrames = 0;
+//         }
+//         lastPos = m_position;
+
+//         // --- 8. ESCAPE TRIGGER (Collision-Aware Recovery) ---
+//         if (stuckFrames > 15)
+//         {
+//             std::cout << "[SYSTEM] Collision detected! Executing Recovery Sequence...\n";
+//             Vector2D safeDir(0, 0);
+            
+//             // Checks the 4 orthogonal neighboring grid cells to find an empty escape route
+//             std::vector<Vector2D> checkDirs = {Vector2D(0, -1), Vector2D(0, 1), Vector2D(-1, 0), Vector2D(1, 0)};
+//             for (auto &d : checkDirs)
+//             {
+//                 Vector2D test(m_position.m_x + d.m_x, m_position.m_y + d.m_y);
+//                 if (env.isInsideBounds(test) && !env.isObstacle(test))
+//                 {
+//                     safeDir = d;
+//                     break;
+//                 }
+//             }
+            
+//             // If a safe neighbor is found, trigger the State Machine (State 1)
+//             if (safeDir.m_x != 0 || safeDir.m_y != 0)
+//             {
+//                 escapeDirAngle = std::atan2(safeDir.m_y, safeDir.m_x);
+//                 escapeState = 1;
+//                 escapeMoveFrames = 20; // Drive in escape direction for 20 frames
+//             }
+//             else
+//             {
+//                 // Total deadlock fallback
+//                 computePath(env);
+//             }
+//             stuckFrames = 0;
 //         }
 //     }
 // }
 
+
+
 void Agent::decideNextMove(Environment &env, float deltaTime)
 {
-    // Target reached check requires a distance tolerance now, because we will rarely hit EXACTLY (14.000, 9.000)
-    if (m_position.distance(m_target) < 0.1f)
+    // --- 1. TARGET REACHED FIX ---
+    // Agar agent target ke 0.5f distance ke andar aa gaya hai, to gaari rok do.
+    if (m_position.distance(m_target) < 0.5f)
     {
-        // THE FIX: Snap the agent perfectly to the target coordinate
-        // so OpenGL draws it exactly in the center of the cell!
         m_position = m_target;
-
+        m_velocity = Vector2D(0, 0);
         std::cout << "Target Reached!\n";
-        m_velocity = Vector2D(0, 0); // Stop Moving
         return;
     }
 
     if (m_usePathfinding)
     {
-        // --- 1. DYNAMIC REPLANNING (SLAM) ---
-        bool pathBlocked = false;
-        
-        // Scan our current upcoming path against our newly updated memory
-        for (int i = m_pathIndex; i < m_path.size(); i++) {
-            int px = (int)m_path[i].m_x;
-            int py = (int)m_path[i].m_y;
+        static int stuckFrames = 0;
+        static Vector2D lastPos = m_position;
 
-            // --- THE BOUNDARY SAFETY FIX ---
-            // Ensure float-rounding hasn't pushed the index outside the map memory!
-            if (px >= 0 && px < m_internalMap[0].size() && py >= 0 && py < m_internalMap.size()) {
-                if (m_internalMap[py][px] == 1) { 
+        // --- NEW: 360-SWEEP ESCAPE VARIABLES ---
+        static int escapeState = 0; // 0: Normal, 1: Backgear, 2: 360 Spin, 3: Pivot, 4: Drive Out
+        static float escapeDirAngle = 0.0f;
+        static int escapeMoveFrames = 0;
+        
+        static float spinAccumulator = 0.0f; // Track karta hai ke agent kitna ghoom chuka hai
+        static float bestEscapeAngle = 0.0f; // Sab se safe raste ka angle save karega
+        static float maxClearance = 0.0f;    // Sab se lambi khali jagah (clearance) save karega
+
+        // --- 2. 360-DEGREE COLLISION RECOVERY STATE MACHINE ---
+        // Jab agent stuck hota hai to ye 4-step logic chalti hai
+        if (escapeState > 0)
+        {
+            if (escapeState == 1)
+            {
+                // STATE 1: BACKGEAR (Peeche aana)
+                // Deewar se physically door hone ke liye peeche ki taraf drive karo
+                m_velocity = Vector2D(std::cos(escapeDirAngle), std::sin(escapeDirAngle)) * m_speed;
+                move(env, deltaTime);
+                escapeMoveFrames--;
+                if (escapeMoveFrames <= 0) {
+                    escapeState = 2; // Backgear poora ho gaya, ab 360 ghoomne ki baari hai
+                    spinAccumulator = 0.0f;
+                    maxClearance = 0.0f;
+                    bestEscapeAngle = m_headingAngle;
+                    std::cout << "[SYSTEM] Backgear complete. Scanning for escape towards target...\n";
+                }
+            }
+            else if (escapeState == 2)
+            {
+                // STATE 2: 360° BODY-AWARE RADAR SWEEP
+                m_velocity = Vector2D(0, 0); 
+                float spinSpeed = 5.0f; // Spin thora fast kiya
+                float stepAngle = spinSpeed * deltaTime;
+                m_headingAngle += stepAngle; 
+                spinAccumulator += stepAngle;
+
+                while (m_headingAngle > M_PI) m_headingAngle -= 2.0f * M_PI;
+                while (m_headingAngle < -M_PI) m_headingAngle += 2.0f * M_PI;
+
+                // --- THE CRITICAL FIX: BODY-WIDTH CHECK ---
+                float currentClearance = 0.0f;
+                Vector2D forward(std::cos(m_headingAngle), std::sin(m_headingAngle));
+                Vector2D side(-forward.m_y, forward.m_x); // Perpendicular vector gaari ki chaurai ke liye
+
+                for (float dist = 0.4f; dist <= 4.0f; dist += 0.4f) {
+                    bool bodyFits = true;
+                    // Check 3 points: Center, Left Shoulder (-0.35f), Right Shoulder (+0.35f)
+                    // Ye ensure karega ke rasta itna khula ho ke poori gaari guzar sakay
+                    float offsets[3] = {0.0f, -0.35f, 0.35f}; 
+                    for(int j=0; j<3; j++) {
+                        Vector2D checkPoint = m_position + (forward * dist) + (side * offsets[j]);
+                        int cx = (int)checkPoint.m_x;
+                        int cy = (int)checkPoint.m_y;
+
+                        if (cx < 0 || cx >= m_internalMap[0].size() || cy < 0 || cy >= m_internalMap.size() || m_internalMap[cy][cx] == 1) {
+                            bodyFits = false;
+                            break; // Kisi bhi shoulder par obstacle laga to ye rasta reject kardo
+                        }
+                    }
+                    if (!bodyFits) break; 
+                    currentClearance += 0.4f;
+                }
+
+                // Check angle towards target
+                Vector2D toTarget = m_target - m_position;
+                float angleToTarget = std::atan2(toTarget.m_y, toTarget.m_x);
+                float angleDiff = angleToTarget - m_headingAngle;
+                while (angleDiff > M_PI) angleDiff -= 2.0f * M_PI;
+                while (angleDiff < -M_PI) angleDiff += 2.0f * M_PI;
+
+                // EARLY EXIT: Agar rasta gaari ki width ke liaz se khula hai AUR target ki taraf hai
+                if (currentClearance >= 2.0f && std::abs(angleDiff) < (M_PI / 2.2f)) {
+                    bestEscapeAngle = m_headingAngle;
+                    escapeState = 4;
+                    escapeMoveFrames = 35; // Stuck zone se nikalne ke liye lamba drive karo
+                    std::cout << "[SYSTEM] Safe body-path found towards target. Escaping!\n";
+                }
+
+                if (currentClearance > maxClearance) {
+                    maxClearance = currentClearance;
+                    bestEscapeAngle = m_headingAngle;
+                }
+
+                // Agar 360 ghoom gaya aur target ki taraf rasta nahi mila, to fallback angle use karo
+                if (spinAccumulator >= 2.0f * M_PI && escapeState == 2) {
+                    escapeState = 3;
+                    std::cout << "[SYSTEM] 360 Sweep complete. Using deepest available clearance.\n";
+                }
+            }
+            else if (escapeState == 3)
+            {
+                // STATE 3: PIVOT TO SAFE ANGLE (Safe raste ki taraf murrna)
+                // FALLBACK PIVOT (Sirf tab chalega agar State 2 mein early exit nahi mila)
+                float error = bestEscapeAngle - m_headingAngle;
+                while (error > M_PI) error -= 2.0f * M_PI;
+                while (error < -M_PI) error += 2.0f * M_PI;
+
+                if (std::abs(error) > 0.1f)
+                {
+                    // Agent ko us safe angle ki taraf ghoomaao
+                    m_angularVelocity = error * 5.0f;
+                    m_headingAngle += m_angularVelocity * deltaTime;
+                    m_velocity = Vector2D(0, 0); 
+                }
+                else
+                {
+                    // Jab agent bilkul safe raste ki taraf dekhne lage, to Drive state mein jao
+                    escapeState = 4; 
+                    escapeMoveFrames = 40; // 40 frames tak straight safe raste mein bhaago
+                }
+            }
+            else if (escapeState == 4)
+            {
+                // STATE 4: DRIVE OUT & REPLAN (Bhaago aur naya rasta dhoondo)
+                m_velocity = Vector2D(std::cos(m_headingAngle), std::sin(m_headingAngle)) * m_speed;
+                move(env, deltaTime);
+                escapeMoveFrames--;
+                
+                if (escapeMoveFrames <= 0) {
+                    // Safe zone mein aagaye. Escape logic band karo aur A* ko dobara path calculate karne ka kaho
+                    escapeState = 0; 
+                    computePath(env); 
+                }
+            }
+            return; // Jab tak escape logic chal rahi hai, normal driving ko ignore karo
+        }
+
+        // --- 3. DYNAMIC REPLANNING (SLAM Integration) ---
+        // Agar aage ke 3 waypoints par obstacle aagaya hai to naya path banao
+        bool pathBlocked = false;
+        if (!m_path.empty())
+        {
+            for (int i = m_pathIndex; i < std::min((int)m_path.size(), m_pathIndex + 3); i++)
+            {
+                if (m_internalMap[(int)m_path[i].m_y][(int)m_path[i].m_x] == 1)
+                {
                     pathBlocked = true;
                     break;
                 }
             }
         }
 
-        // If the path is empty, blocked, OR we have exhausted all waypoints, REPLAN!
-        if (m_path.empty() || pathBlocked || m_pathIndex >= m_path.size())
+        if (m_path.empty() || pathBlocked)
         {
             computePath(env);
             if (m_path.empty()) return;
         }
 
-        Vector2D nextWayPoint = m_path[m_pathIndex];
-
-        // --- THE FRAME OVERSHOOT FIX ---
-        float distanceToWaypoint = m_position.distance(nextWayPoint);
-        float moveStep = m_speed * deltaTime; // How far the agent will travel this exact frame
-
-        // 1. Check if we have arrived at the current waypoint
-        if (moveStep >= distanceToWaypoint)
+        // --- 4. WAYPOINT PRUNING (Distance Check) ---
+        // Tang raston ke liye hum waypoint delete karne ka distance 0.3f rakhte hain taake corners cut na hon
+        while (m_pathIndex < m_path.size() && m_position.distance(m_path[m_pathIndex]) < 0.3f)
         {
-            m_position = nextWayPoint;   // Snap perfectly to the waypoint
-            m_velocity = Vector2D(0, 0); // Halt velocity for this frame
-            m_pathIndex++;               // Queue up the next waypoint
-            return;                      // End the frame here so we don't call move()
-        }   
-
-        // 2. Calculate the desired angle to the waypoint
-        Vector2D deltaVec = nextWayPoint - m_position;
-        float desiredHeadingAngle = std::atan2(deltaVec.m_y, deltaVec.m_x);
-
-        // In a future update, you can add a PID controller here to slowly transition m_heading to desiredHeading.
-        // For now, the steering snaps instantly to the correct angle.
-        m_headingAngle = desiredHeadingAngle;
-
-        // 3. Build the Rotation Matrix based on our heading
-        Matrix rotationMatrix(2, 2);
-        rotationMatrix.setValue(0, 0, std::cos(m_headingAngle));
-        rotationMatrix.setValue(0, 1, -std::sin(m_headingAngle));
-        rotationMatrix.setValue(1, 0, std::sin(m_headingAngle));
-        rotationMatrix.setValue(1, 1, std::cos(m_headingAngle));
-
-        // 4. Rotate our local forward vector into world velocity
-        Vector2D localForward(1.0f, 0.0f);
-        Vector2D worldDir = rotationMatrix * localForward;
-
-        // --- PRECISION DRIFT FIX ---
-        // If the velocity is microscopic, snap it to a perfect 0.0 to prevent drift
-        if (std::abs(worldDir.m_x) < 0.001f) worldDir.m_x = 0.0f;
-        if (std::abs(worldDir.m_y) < 0.001f) worldDir.m_y = 0.0f;
-
-        m_velocity = worldDir * m_speed; // worldDir is a rotated vector and m_speed is the scalar
-
-        // 5. Apply the physics
-        move(env, deltaTime);
-    }
-    // else
-    // {
-    //     // Old greedy logic remains untouched for now
-    //     // In computer science, a "Greedy Algorithm" is one that makes the most obvious, immediate best choice at the current moment without looking ahead at the big picture.
-    //     Vector2D desiredDir = computeDirectionToTarget();
-    //     int obstacleDistance = m_sensor->detect(m_position, desiredDir, env);
-
-    //     if (obstacleDistance == -1 || obstacleDistance > 1)
-    //     {
-    //         m_velocity = desiredDir;
-    //         move(env, deltaTime);
-    //     }
-    //     else
-    //     {
-    //         chooseAlternativeDirection(env);
-    //         move(env, deltaTime);
-    //     }
-    // }
-}
-
-// Standard std::atan(val) only takes a single value and returns angles between \(-\frac{\pi }{2}\) and \(\frac{\pi }{2}\) (Quadrants I and IV). std::atan2 handles all four quadrants safely. It also Prevents Division-by-Zero
-
-void Agent::chooseAlternativeDirection(Environment &env)
-{
-    // std::vector<Vector2D> directions = {
-    //     {1,0}, {-1,0}, {0,1}, {0,-1} // For moving one step left, right bottom or top
-    // };
-
-    // for(const auto& dir : directions)
-    // {
-    //     Vector2D nextPos = m_position + dir;
-
-    //     if(env.isInsideBounds(nextPos) && !env.isObstacle(nextPos))
-    //     {
-    //         m_velocity = dir;
-    //         return;
-    //     }
-    // }
-
-    // Pehle dekho ke agent jana kahan chahta tha
-    Vector2D desiredDir = computeDirectionToTarget();
-    std::vector<Vector2D> priorityDirections;
-
-    // Agar horizontally jana chahta tha aur wall aagayi,
-    // to pehle slide (Up/Down) try karo, peechay (reverse) jana aakhri option!
-    if (desiredDir.m_x != 0)
-    {
-        priorityDirections = {{0, 1}, {0, -1}, {-desiredDir.m_x, 0}};
-    }
-    // Agar vertically hit kiya hai, to Left/Right slide try karo
-    else
-    {
-        priorityDirections = {{1, 0}, {-1, 0}, {0, -desiredDir.m_y}};
-    }
-
-    for (const auto &dir : priorityDirections)
-    {
-        Vector2D nextPos = m_position + dir;
-
-        if (env.isInsideBounds(nextPos) && !env.isObstacle(nextPos))
+            if (m_pathIndex == m_path.size() - 1 && m_position.distance(m_path[m_pathIndex]) >= 0.15f) {
+                break; 
+            }
+            m_pathIndex++;
+        }
+        if (m_pathIndex >= m_path.size())
         {
-            m_velocity = dir;
+            computePath(env);
             return;
+        }
+
+        // --- 5. FULL PID KINEMATIC CONTROLLER ---
+        Vector2D nextWayPoint = m_path[m_pathIndex];
+        Vector2D deltaVec = nextWayPoint - m_position;
+        float desiredAngle = std::atan2(deltaVec.m_y, deltaVec.m_x);
+        
+        float error = desiredAngle - m_headingAngle;
+        while (error > M_PI) error -= 2.0f * M_PI;
+        while (error < -M_PI) error += 2.0f * M_PI;
+
+        // Proportional, Integral aur Derivative (PID) math
+        m_integral += error * deltaTime;
+        float derivative = (error - m_previousError) / deltaTime;
+        m_angularVelocity = (m_kp * error) + (m_ki * m_integral) + (m_kd * derivative);
+        m_previousError = error;
+
+        // Mechanical Limits
+        if (m_angularVelocity > 4.0f) m_angularVelocity = 4.0f;
+        if (m_angularVelocity < -4.0f) m_angularVelocity = -4.0f;
+        
+        m_headingAngle += m_angularVelocity * deltaTime;
+
+        // --- 6. FLUID THROTTLE (Continuous Driving) ---
+        float alignment = std::cos(error);
+        if (alignment < 0.1f) alignment = 0.1f; 
+        
+        m_velocity = Vector2D(std::cos(m_headingAngle), std::sin(m_headingAngle)) * (m_speed * alignment);
+
+        // Apply physical movement
+        move(env, deltaTime);
+
+        // --- 7. STALL SENSING (Stuck Detection) ---
+        if (m_position.distance(lastPos) < 0.005f)
+        {
+            stuckFrames++;
+        }
+        else
+        {
+            stuckFrames = 0;
+        }
+        lastPos = m_position;
+
+        // --- 8. ESCAPE TRIGGER (Start 360-Sweep Recovery) ---
+        if (stuckFrames > 15)
+        {
+            std::cout << "[SYSTEM] Deadlock detected! Executing 360-Sweep Recovery...\n";
+            Vector2D safeDir(0, 0);
+            
+            // Backgear lagane ke liye 4 neighbours mein se koi thori si safe jagah dhoondo
+            std::vector<Vector2D> checkDirs = {Vector2D(0, -1), Vector2D(0, 1), Vector2D(-1, 0), Vector2D(1, 0)};
+            for (auto &d : checkDirs)
+            {
+                Vector2D test(m_position.m_x + d.m_x, m_position.m_y + d.m_y);
+                if (env.isInsideBounds(test) && !env.isObstacle(test))
+                {
+                    safeDir = d;
+                    break;
+                }
+            }
+            
+            if (safeDir.m_x != 0 || safeDir.m_y != 0)
+            {
+                // Trigger Phase 1: Backgear lagao aur variables reset karo taake agle frame se escape logic start ho
+                escapeDirAngle = std::atan2(safeDir.m_y, safeDir.m_x);
+                escapeState = 1;
+                escapeMoveFrames = 20; 
+                spinAccumulator = 0.0f;
+                maxClearance = 0.0f;
+            }
+            else
+            {
+                // Agar 100% deewaron mein block ho to fallback par A* call kardo
+                computePath(env);
+            }
+            stuckFrames = 0;
         }
     }
 }
 
-Vector2D Agent::computeDirectionToTarget() const
+
+
+
+
+void Agent::computePath(Environment &env)
 {
-    Vector2D delta = m_target - m_position;
+    int startX = (int)m_position.m_x;
+    int startY = (int)m_position.m_y;
 
-    // Restrict movement to 4-way (Orthogonal) by picking the longer axis first
-    if (std::abs(delta.m_x) > std::abs(delta.m_y))
-        return Vector2D(((delta.m_x > 0) ? 1 : -1), 0); // Move Horizontally
-    else if (delta.m_y != 0)
-        return Vector2D(0, ((delta.m_y > 0) ? 1 : -1)); // Move Vertically
-
-    return Vector2D(0, 0);
-}
-
-void Agent::computePath(Environment &env) // keep 'env' in signature for interface, but don't use it!
-{
-    // THE FIX: Snap the float position to the nearest integer grid cell for the algorithm
-    Vector2D gridStart((int)m_position.m_x, (int)m_position.m_y);
-
-    // Pass the rounded grid position to BFS, not the raw floating point
-    // m_path = BFS::findPath(gridStart, m_target, env); // For using BFS, uncomment this
-    // m_path = AStar::findPath(gridStart, m_target, env); 
-
-    // Pass the internal map not the environment
-    m_path = AStar::findPath(gridStart, m_target, m_internalMap); 
-
-    if (m_path.empty())
+    // --- 1. START-LINE WALL ESCAPE LOGIC ---
+    // If the agent spawns or is pushed perfectly inside an obstacle block, A* will fail immediately.
+    // This routine checks the 8 neighboring cells, finds the nearest empty floor tile,
+    // and manually snaps the agent's coordinates there to free it from the physics lock.
+    if (startX >= 0 && startX < m_internalMap[0].size() && startY >= 0 && startY < m_internalMap.size())
     {
-        // TRIGGER THE ALARM
-        m_isUnreachable = true; 
-        std::cout << "\n[ALARM] Target Location Blocked! Press Ctrl + R to reload the simulation.\n";
+        if (m_internalMap[startY][startX] == 1)
+        {
+            bool foundSafe = false;
+            for (int dy = -1; dy <= 1 && !foundSafe; dy++)
+            {
+                for (int dx = -1; dx <= 1 && !foundSafe; dx++)
+                {
+                    int nx = startX + dx, ny = startY + dy;
+                    if (nx >= 0 && nx < m_internalMap[0].size() && ny >= 0 && ny < m_internalMap.size())
+                    {
+                        if (m_internalMap[ny][nx] == 0)
+                        {
+                            startX = nx;
+                            startY = ny;
+
+                            // Snap position to the safe integer grid coordinate
+                            m_position.m_x = nx;
+                            m_position.m_y = ny;
+
+                            foundSafe = true;
+                        }
+                    }
+                }
+            }
+        }
     }
-    else
-    {
-        m_isUnreachable = false; // Safe
-        m_pathIndex = 1;
 
-        // --- THE MICRO-DISTANCE FIX ---
-        // If A* says we are already in the target cell, add the exact float target
-        // to the path so m_pathIndex = 1 doesn't crash the engine!
-        if (m_path.size() == 1) {
+    Vector2D gridStart((int)m_position.m_x, (int)m_position.m_y);
+    Vector2D gridTarget((int)m_target.m_x, (int)m_target.m_y);
+    
+    // Pass strictly integer coordinates to the A* grid search
+    m_path = AStar::findPath(gridStart, gridTarget, m_internalMap);
+
+    if (!m_path.empty())
+    {
+        m_isUnreachable = false;
+        
+        // --- 2. HALLWAY CENTERING ---
+        // A* generates waypoints on the absolute top-left corner (0.0) of every cell.
+        // Adding +0.5 pushes the entire path sequence to the exact center of the corridors
+        // so the agent's circular hitbox doesn't scrape the walls.
+        for (auto &p : m_path)
+        {
+            p.m_x += 0.5f;
+            p.m_y += 0.5f;
+        }
+
+        // --- 3. TARGET ARRIVAL FIX ---
+        // Ensures the absolute final coordinate in the path array matches the exact float target.
+        // This bridges the gap between the +0.5f centered path and the required stopping coordinate.
+        if (m_path.back().distance(m_target) > 0.01f)
+        {
             m_path.push_back(m_target);
         }
 
-        // --- 2. TRAJECTORY OPTIMIZATION ---
-        // Pass the jagged path through our rubber-band algorithm!
-        // Alpha: 0.1 (Data Weight), Beta: 0.2 (Smooth Weight), Tolerance: 0.001
+        m_pathIndex = 1; // Start aiming at index 1 (Index 0 is underneath the agent)
+        
+        // Pass the raw path to the PathSmoother to convert jagged 90-degree lines into fluid curves
         m_path = PathSmoother::smoothPath(m_path, m_internalMap, 0.1f, 0.2f, 0.001f);
+    }
+    else
+    {
+        m_isUnreachable = true;
+        std::cout << "\n[ALARM] Target Location Blocked! Press Ctrl + R to reload.\n";
     }
 }

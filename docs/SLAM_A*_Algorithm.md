@@ -22,6 +22,8 @@ Complete Simulator Hierarchy
     
     Phase 6: Trajectory Optimization (Applying Gradient Descent Smoothing (often called the "Rubber Band" algorithm))
 
+    Phase 7: Applying PID (Proportional Derivative Integral)
+
 
 Before Phase 5:
 Agent is basically omniscient. When you call AStar::findPath(..., env), you are handing the agent the master blueprint of the universe. It knows exactly where every wall is before it even starts its engine.
