@@ -99,7 +99,8 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 ---
 
 ## 📸 Demo
-
+![Simulator Demo](./assets/demo.png)
+![Simulator Demo](./assets/demo_reached.png)
 ---
 
 ### Author
