@@ -34,9 +34,9 @@ At its core, the simulator is driven by applied Data Structures and Algorithms:
 
 ## 🛠️ Installation & Compilation
 
-This project is fully compatible with Linux environments (tested on Arch Linux). Ensure you have `g++`, `glfw`, and `opengl` development packages installed on your system.
+This project is fully cross-platform and compatible with Linux (tested on Arch Linux), Windows, and macOS. Ensure you have `g++` (or `clang++`), `glfw`, and `opengl` development packages installed on your system.
 
-> ⚠️ **Important Warning regarding GLAD:** > The `glad.c` and `glad/include` files provided in this repository are generated based on specific hardware and OpenGL drivers. Because GLAD configurations can be highly specific from GPU to GPU, using these exact files on a different graphics card might cause rendering failures or segmentation faults. If you experience issues, you will need to generate your own GLAD files for your specific GPU architecture using the [GLAD web service](https://glad.dav1d.de/) (Set to C/C++, OpenGL 3.3 Core) and replace the existing `glad` folder.
+> ⚠️ **Important Warning regarding GLAD:** The `glad.c` and `glad/include` files provided in this repository are generated based on specific hardware and OpenGL drivers. Because GLAD configurations can be highly specific from GPU to GPU, using these exact files on a different graphics card might cause rendering failures or segmentation faults. If you experience issues, you will need to generate your own GLAD files for your specific GPU architecture using the [GLAD web service](https://glad.dav1d.de/) (Set to C/C++, OpenGL 3.3 Core) and replace the existing `glad` folder.
 
 **1. Clone the repository:**
 ```bash
@@ -46,17 +46,42 @@ cd Autonomous_Agent_Simulator_Cpp
 ```
 
 **2. Compile the project:**
-Run the following standard `g++` compilation command. It links all necessary source files, GLFW, and OpenGL libraries:
+Run the compilation command corresponding to your Operating System.
+
+**For Linux:**
 
 ```bash
 g++ app/main.cpp src/core/vector2d.cpp src/math/matrix.cpp src/environment/environment.cpp src/environment/dynamicObstacle.cpp src/sensors/lidarSensor.cpp src/pathFinding/aStar.cpp src/pathFinding/pathSmoother.cpp src/agents/agent.cpp src/render/renderer.cpp glad/src/glad.c -o executables/main -I./glad/include -lglfw -lGL -ldl
 
 ```
 
+**For Windows (MSYS2 / MinGW-w64):**
+
+```bash
+g++ app/main.cpp src/core/vector2d.cpp src/math/matrix.cpp src/environment/environment.cpp src/environment/dynamicObstacle.cpp src/sensors/lidarSensor.cpp src/pathFinding/aStar.cpp src/pathFinding/pathSmoother.cpp src/agents/agent.cpp src/render/renderer.cpp glad/src/glad.c -o executables/main.exe -I./glad/include -lglfw3 -lopengl32 -lgdi32 -luser32 -lshell32
+
+```
+
+**For macOS:**
+
+```bash
+clang++ app/main.cpp src/core/vector2d.cpp src/math/matrix.cpp src/environment/environment.cpp src/environment/dynamicObstacle.cpp src/sensors/lidarSensor.cpp src/pathFinding/aStar.cpp src/pathFinding/pathSmoother.cpp src/agents/agent.cpp src/render/renderer.cpp glad/src/glad.c -o executables/main -I./glad/include -lglfw -framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo
+
+```
+
 **3. Run the simulator:**
+
+**Linux / macOS:**
 
 ```bash
 ./executables/main
+
+```
+
+**Windows:**
+
+```bash
+./executables/main.exe
 
 ```
 
@@ -74,8 +99,7 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 ---
 
 ## 📸 Demo
-![Simulator Demo](./assets/demo.png)
-![Simulator Demo](./assets/demo_reached.png)
+
 ---
 
 ### Author
@@ -83,4 +107,6 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 **Sadaan Siddique** | Computer Engineering
 
 *Designed for exploration in low-level systems programming, graphics, and autonomous robotics.*
+
+```
 
