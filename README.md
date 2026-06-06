@@ -1,4 +1,4 @@
-# Autonomous Agent Simulator (C++ & OpenGL) 🚀
+# Autonomous Agent Environment Simulator (C++ & OpenGL) 🚀
 
 A high-performance, from-scratch 2D robotic simulation environment built in C++. This project demonstrates advanced autonomous navigation, real-time SLAM (Simultaneous Localization and Mapping), and reactive obstacle avoidance using custom-built physics and rendering engines. 
 
