@@ -1,4 +1,3 @@
-```markdown
 # Autonomous Agent Simulator (C++ & OpenGL) 🚀
 
 A high-performance, from-scratch 2D robotic simulation environment built in C++. This project demonstrates advanced autonomous navigation, real-time SLAM (Simultaneous Localization and Mapping), and reactive obstacle avoidance using custom-built physics and rendering engines. 
@@ -7,16 +6,20 @@ A high-performance, from-scratch 2D robotic simulation environment built in C++.
 
 This simulator is built heavily on robust **Object-Oriented Programming (OOP)** principles, utilizing tight **Encapsulation**, **Abstraction** (e.g., generic sensor interfaces), and **Composition** (Agents *have* sensors, Agents *have* internal maps) to maintain a scalable codebase.
 
+### 🧱 Data Structures & Algorithms (DSA)
+At its core, the simulator is driven by applied Data Structures and Algorithms:
+* **Graph Theory & Traversal:** The environment and the agent's internal memory are represented as 2D matrices (grids) acting as implicit graphs.
+* **A* (A-Star) Search:** Implements heuristic-driven shortest-path routing from the agent to the target, avoiding dynamic and static obstacles.
+* **Breadth-First Search (BFS):** Utilized for structural reachability checks, deadlock detection, and identifying safe escape routes when the agent is cornered.
+* **Point Clouds:** Sensory data is stored and processed using dynamic arrays of paired data types (`std::vector<std::pair<Vector2D, bool>>`) to map hit coordinates and wall status.
+* **Bresenham's Line Algorithm:** Applied for discrete ray-casting in the LIDAR simulation to determine line-of-sight and wall intersections on a 2D grid.
+* **Gradient Descent Smoothing:** Post-processes the blocky A* grid path into a fluid, drivable trajectory using mathematical optimization algorithms.
+
 ### 🤖 Robotics & Navigation
 * **Real-Time SLAM:** The agent starts with a "Fog of War" and dynamically builds an internal grid map of its environment using sensory data.
-* **LIDAR Sensor Simulation:** Implements a customizable ray-casting sensor (defaulting to 180° FOV with 30 laser rays) using **Bresenham's Line Algorithm** to detect walls and calculate distances.
+* **LIDAR Sensor Simulation:** Implements a customizable ray-casting sensor (defaulting to 180° FOV with 30 laser rays). 
 * **Live Memory Sync:** Zero-persistence dynamic mapping ensures the agent instantly updates its internal map to account for moving objects, avoiding "ghost trails."
 * **PID Controller:** A custom Proportional-Integral-Derivative steering controller ensures fluid, realistic acceleration and turning, preventing robotic "snapping" to waypoints.
-
-### 🗺️ Pathfinding & Algorithms
-* **A* (A-Star) Search:** Calculates the most optimal global path from the agent's current position to the target coordinate.
-* **Gradient Descent Path Smoothing:** Post-processes the blocky A* grid path into a smooth, drivable trajectory using mathematical optimization.
-* **Breadth-First Search (BFS):** Utilized for structural reachability checks and identifying safe escape routes when the agent is cornered.
 
 ### ⚙️ Physics & Environment
 * **Dynamic Reactive Obstacles:** Autonomous "enemy" blocks patrol the grid. They feature real-time collision detection, instantly rebounding off static walls, other obstacles, and the agent.
@@ -71,9 +74,8 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 ---
 
 ## 📸 Demo
-
-*(Recommended: Add a short `.gif` or screenshot here showing the agent navigating through the pink dynamic obstacles with its red LIDAR fan visible)*
-
+![Simulator Demo](./assets/demo.png)
+![Simulator Demo](./assets/demo_reached.png)
 ---
 
 ### Author
@@ -82,6 +84,3 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 
 *Designed for exploration in low-level systems programming, graphics, and autonomous robotics.*
 
-```
-
-```
