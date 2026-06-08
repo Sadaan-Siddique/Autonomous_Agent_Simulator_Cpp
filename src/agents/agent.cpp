@@ -1,6 +1,7 @@
 #include "../../include/agents/agent.hpp"
 #include <random>
 #include <cmath>
+#include <algorithm> // for std::clamp
 
 // 1. What is Waypoint Navigation?
 // Imagine using Google Maps. It doesn't just draw a single straight line from your house to a restaurant; it gives you a series of intermediate steps (turn right on Main St, go straight for 2 miles, turn left on 4th Ave).
@@ -25,6 +26,10 @@ Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor, int mapWidth
     m_integral = 0.0f;
 
     m_internalMap = std::vector<std::vector<int>>(mapHeight, std::vector<int>(mapWidth, -1));
+
+    // Initialize the probability map with 0.0f (Log-Odds 0 = 50% probability = Unknown)
+    // Occupancy Grid Mapping. What it does: Instead of a binary grid that only holds 0 (empty) or 1 (wall), we created a floating-point grid (m_probMap). Every single grid cell now holds a continuous decimal value representing the "belief" or "probability" of an obstacle existing in that exact physical space.
+    m_probMap = std::vector<std::vector<float>>(mapHeight, std::vector<float>(mapWidth, 0.0f));
 }
 
 Vector2D Agent::getPosition() const { return m_position; }
@@ -55,6 +60,7 @@ void Agent::reset(const Vector2D &startPos)
         for (int x = 0; x < m_internalMap[0].size(); x++)
         {
             m_internalMap[y][x] = -1;
+            m_probMap[y][x] = 0.0f; // Reset Log odds
         }
     }
 }
@@ -74,41 +80,37 @@ void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Env
     int height = m_internalMap.size();
 
     // Get the absolute physical static grid to verify before erasing
-    const auto& realGrid = env.getGrid();
+    const auto &realGrid = env.getGrid();
 
     while (true)
     {
         if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height)
         {
-            if (x0 == x1 && y0 == y1 && isHit)
-            {
-                m_internalMap[y0][x0] = 1; // Mark as Wall
-            }
-            else
-            {
-                // --- THE PERFECT CLEARING FIX ---
-                // Agar physical environment mein yahan koi Static Obstacle (1) nahi hai,
-                // Sirf tabhi is block ko erase karo. Ye Ghost Trails ko mita dega 
-                // lekin Grazing Rays se static deewaron ko mehfooz rakhega!
-                if (realGrid[y0][x0] != 1) 
-                {
-                    m_internalMap[y0][x0] = 0;
-                }
+            // The Bayesian Approach & Log-Odds
+            if (x0 == x1 && y0 == y1 && isHit) m_probMap[y0][x0] += LOG_ODDS_HIT; // Sensor hit a wall: Increase probability of obstacle
+            else m_probMap[y0][x0] += LOG_ODDS_MISS; // Sensor ray passed through this cell: Decrease probability
+
+            // Clamp values to prevent infinite math explosions
+            // float std::clamp(float v, float lo, float hi);
+            if (m_probMap[y0][x0] > MAX_LOG_ODDS)
+                m_probMap[y0][x0] = MAX_LOG_ODDS;
+            if (m_probMap[y0][x0] < MAX_LOG_ODDS)
+                m_probMap[y0][x0] = MIN_LOG_ODDS;
+
+            // --- SYNC WITH BINARY MAP ---
+            // A* expects 0 (free) or 1 (wall). 
+            // If LogOdds > 0.0f, probability is > 50%, so we treat it as a solid wall.
+            if (m_probMap[y0][x0] > 0.0f) {
+                m_internalMap[y0][x0] = 1;
+            } else {
+                m_internalMap[y0][x0] = 0;
             }
         }
-        if (x0 == x1 && y0 == y1)
-            break;
+        if (x0 == x1 && y0 == y1) break;
+        
         e2 = 2 * err;
-        if (e2 >= dy)
-        {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx)
-        {
-            err += dx;
-            y0 += sy;
-        }
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
     }
 }
 
@@ -129,7 +131,7 @@ void Agent::move(Environment &env, float deltaTime)
     // }
 
     // now, we no longer teleport our agent, we are implementing continuous motion, we use kinematic equation: Position = Position + (Velocity * Time).
-   // Continuous motion using kinematic equation: Position = Position + (Velocity * Time)
+    // Continuous motion using kinematic equation: Position = Position + (Velocity * Time)
     Vector2D targetPosition = m_position + (m_velocity * deltaTime);
 
     // --- THE DIRECTIONAL BUMPER FIX ---
@@ -183,58 +185,66 @@ void Agent::move(Environment &env, float deltaTime)
     }
 }
 
+void Agent::sense(Environment &env)
+{
+    // 1. PHYSICAL SENSOR SCAN
+    // The sensor exists in the physical world, so it must cast rays
+    // from the true absolute position to accurately hit environment walls.
+    m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
+
+    // 2. SLAM MAPPING (The Robot's Brain)
+    // Retrieve the filtered position from the Kalman Filter.
+    // The robot maps the world relative to where it *thinks* it currently is.
+    Vector2D estimatedPos = m_kf.getEstimatedPosition();
+
+    int startX = (int)estimatedPos.m_x;
+    int startY = (int)estimatedPos.m_y;
+
+    // Process every laser ray to update the internal map
+    for (const auto &ray : m_currentPointCloud)
+    {
+        int endX = (int)ray.first.m_x;
+        int endY = (int)ray.first.m_y;
+        // Update the Bayesian Log-Odds probability map using the estimated origin
+        bresenhamTrace(startX, startY, endX, endY, ray.second, env);
+    }
+}
+
 // void Agent::sense(Environment &env)
 // {
-//     // Generate the point cloud and save it to the agent's memory
+//     // --- 1. THE BULLETPROOF GHOST ERASER ---
+//     // Puraani FOV wali logic hata di hai. Ab hum memory se har us deewar ko
+//     // foran mita denge jo physical static grid (orange walls) ka hissa nahi hai.
+//     int mapW = m_internalMap[0].size();
+//     int mapH = m_internalMap.size();
+//     const auto& realGrid = env.getGrid();
+
+//     for (int y = 0; y < mapH; y++) {
+//         for (int x = 0; x < mapW; x++) {
+//             // Agar agent ki memory mein deewar (1) hai, lekin physical Environment
+//             // ki static grid mein nahi hai (matlab wo ek pink moving block tha)...
+//             if (m_internalMap[y][x] == 1 && realGrid[y][x] != 1) {
+//                 m_internalMap[y][x] = 0; // ...to us GHOST TRAIL ko foran erase kar do!
+//             }
+//         }
+//     }
+
+//     // --- 2. NORMAL LIDAR SCAN ---
+//     // Puraani trails mitane ke baad, ab normally scan karo.
+//     // Jo pink obstacles abhi LIDAR ke samne honge, wo dobara apni nayi current position par draw ho jayenge.
 //     m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
 
 //     int startX = (int)m_position.m_x;
 //     int startY = (int)m_position.m_y;
 
-//     // Process every laser ray to update the internal map
-//     for (const auto &ray : m_currentPointCloud)
-//     {
+//     for (const auto &ray : m_currentPointCloud) {
 //         int endX = (int)ray.first.m_x;
 //         int endY = (int)ray.first.m_y;
+
+//         // Ye function static walls ko mehfooz rakhega aur naye hits ko map karega
 //         bresenhamTrace(startX, startY, endX, endY, ray.second, env);
 //     }
 // }
-
-void Agent::sense(Environment &env)
-{
-    // --- 1. THE BULLETPROOF GHOST ERASER ---
-    // Puraani FOV wali logic hata di hai. Ab hum memory se har us deewar ko 
-    // foran mita denge jo physical static grid (orange walls) ka hissa nahi hai.
-    int mapW = m_internalMap[0].size();
-    int mapH = m_internalMap.size();
-    const auto& realGrid = env.getGrid();
-
-    for (int y = 0; y < mapH; y++) {
-        for (int x = 0; x < mapW; x++) {
-            // Agar agent ki memory mein deewar (1) hai, lekin physical Environment 
-            // ki static grid mein nahi hai (matlab wo ek pink moving block tha)...
-            if (m_internalMap[y][x] == 1 && realGrid[y][x] != 1) {
-                m_internalMap[y][x] = 0; // ...to us GHOST TRAIL ko foran erase kar do!
-            }
-        }
-    }
-
-    // --- 2. NORMAL LIDAR SCAN ---
-    // Puraani trails mitane ke baad, ab normally scan karo.
-    // Jo pink obstacles abhi LIDAR ke samne honge, wo dobara apni nayi current position par draw ho jayenge.
-    m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
-
-    int startX = (int)m_position.m_x;
-    int startY = (int)m_position.m_y;
-
-    for (const auto &ray : m_currentPointCloud) {
-        int endX = (int)ray.first.m_x;
-        int endY = (int)ray.first.m_y;
-        
-        // Ye function static walls ko mehfooz rakhega aur naye hits ko map karega
-        bresenhamTrace(startX, startY, endX, endY, ray.second, env); 
-    }
-}
 
 // I'm changing this decide next move function because of Waypoint Navigation
 // The BFS path is now treated as a list of exact physical coordinates.
@@ -249,7 +259,7 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
     {
         m_position = m_target;
         m_velocity = Vector2D(0, 0);
-        std::cout  << "Target Reached!\n";
+        std::cout << "Target Reached!\n";
         return;
     }
 
@@ -262,7 +272,7 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         static int escapeState = 0; // 0: Normal, 1: Backgear, 2: 360 Spin, 3: Pivot, 4: Drive Out
         static float escapeDirAngle = 0.0f;
         static int escapeMoveFrames = 0;
-        
+
         static float spinAccumulator = 0.0f; // Track karta hai ke agent kitna ghoom chuka hai
         static float bestEscapeAngle = 0.0f; // Sab se safe raste ka angle save karega
         static float maxClearance = 0.0f;    // Sab se lambi khali jagah (clearance) save karega
@@ -278,7 +288,8 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
                 m_velocity = Vector2D(std::cos(escapeDirAngle), std::sin(escapeDirAngle)) * m_speed;
                 move(env, deltaTime);
                 escapeMoveFrames--;
-                if (escapeMoveFrames <= 0) {
+                if (escapeMoveFrames <= 0)
+                {
                     escapeState = 2; // Backgear poora ho gaya, ab 360 ghoomne ki baari hai
                     spinAccumulator = 0.0f;
                     maxClearance = 0.0f;
@@ -289,36 +300,42 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
             else if (escapeState == 2)
             {
                 // STATE 2: 360° BODY-AWARE RADAR SWEEP
-                m_velocity = Vector2D(0, 0); 
+                m_velocity = Vector2D(0, 0);
                 float spinSpeed = 5.0f; // Spin thora fast kiya
                 float stepAngle = spinSpeed * deltaTime;
-                m_headingAngle += stepAngle; 
+                m_headingAngle += stepAngle;
                 spinAccumulator += stepAngle;
 
-                while (m_headingAngle > M_PI) m_headingAngle -= 2.0f * M_PI;
-                while (m_headingAngle < -M_PI) m_headingAngle += 2.0f * M_PI;
+                while (m_headingAngle > M_PI)
+                    m_headingAngle -= 2.0f * M_PI;
+                while (m_headingAngle < -M_PI)
+                    m_headingAngle += 2.0f * M_PI;
 
                 // --- THE CRITICAL FIX: BODY-WIDTH CHECK ---
                 float currentClearance = 0.0f;
                 Vector2D forward(std::cos(m_headingAngle), std::sin(m_headingAngle));
                 Vector2D side(-forward.m_y, forward.m_x); // Perpendicular vector gaari ki chaurai ke liye
 
-                for (float dist = 0.4f; dist <= 4.0f; dist += 0.4f) {
+                for (float dist = 0.4f; dist <= 4.0f; dist += 0.4f)
+                {
                     bool bodyFits = true;
                     // Check 3 points: Center, Left Shoulder (-0.35f), Right Shoulder (+0.35f)
                     // Ye ensure karega ke rasta itna khula ho ke poori gaari guzar sakay
-                    float offsets[3] = {0.0f, -0.35f, 0.35f}; 
-                    for(int j=0; j<3; j++) {
+                    float offsets[3] = {0.0f, -0.35f, 0.35f};
+                    for (int j = 0; j < 3; j++)
+                    {
                         Vector2D checkPoint = m_position + (forward * dist) + (side * offsets[j]);
                         int cx = (int)checkPoint.m_x;
                         int cy = (int)checkPoint.m_y;
 
-                        if (cx < 0 || cx >= m_internalMap[0].size() || cy < 0 || cy >= m_internalMap.size() || m_internalMap[cy][cx] == 1) {
+                        if (cx < 0 || cx >= m_internalMap[0].size() || cy < 0 || cy >= m_internalMap.size() || m_internalMap[cy][cx] == 1)
+                        {
                             bodyFits = false;
                             break; // Kisi bhi shoulder par obstacle laga to ye rasta reject kardo
                         }
                     }
-                    if (!bodyFits) break; 
+                    if (!bodyFits)
+                        break;
                     currentClearance += 0.4f;
                 }
 
@@ -326,24 +343,29 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
                 Vector2D toTarget = m_target - m_position;
                 float angleToTarget = std::atan2(toTarget.m_y, toTarget.m_x);
                 float angleDiff = angleToTarget - m_headingAngle;
-                while (angleDiff > M_PI) angleDiff -= 2.0f * M_PI;
-                while (angleDiff < -M_PI) angleDiff += 2.0f * M_PI;
+                while (angleDiff > M_PI)
+                    angleDiff -= 2.0f * M_PI;
+                while (angleDiff < -M_PI)
+                    angleDiff += 2.0f * M_PI;
 
                 // EARLY EXIT: Agar rasta gaari ki width ke liaz se khula hai AUR target ki taraf hai
-                if (currentClearance >= 2.0f && std::abs(angleDiff) < (M_PI / 2.2f)) {
+                if (currentClearance >= 2.0f && std::abs(angleDiff) < (M_PI / 2.2f))
+                {
                     bestEscapeAngle = m_headingAngle;
                     escapeState = 4;
                     escapeMoveFrames = 35; // Stuck zone se nikalne ke liye lamba drive karo
                     std::cout << "[SYSTEM] Safe body-path found towards target. Escaping!\n";
                 }
 
-                if (currentClearance > maxClearance) {
+                if (currentClearance > maxClearance)
+                {
                     maxClearance = currentClearance;
                     bestEscapeAngle = m_headingAngle;
                 }
 
                 // Agar 360 ghoom gaya aur target ki taraf rasta nahi mila, to fallback angle use karo
-                if (spinAccumulator >= 2.0f * M_PI && escapeState == 2) {
+                if (spinAccumulator >= 2.0f * M_PI && escapeState == 2)
+                {
                     escapeState = 3;
                     std::cout << "[SYSTEM] 360 Sweep complete. Using deepest available clearance.\n";
                 }
@@ -353,20 +375,22 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
                 // STATE 3: PIVOT TO SAFE ANGLE (Safe raste ki taraf murrna)
                 // FALLBACK PIVOT (Sirf tab chalega agar State 2 mein early exit nahi mila)
                 float error = bestEscapeAngle - m_headingAngle;
-                while (error > M_PI) error -= 2.0f * M_PI;
-                while (error < -M_PI) error += 2.0f * M_PI;
+                while (error > M_PI)
+                    error -= 2.0f * M_PI;
+                while (error < -M_PI)
+                    error += 2.0f * M_PI;
 
                 if (std::abs(error) > 0.1f)
                 {
                     // Agent ko us safe angle ki taraf ghoomaao
                     m_angularVelocity = error * 5.0f;
                     m_headingAngle += m_angularVelocity * deltaTime;
-                    m_velocity = Vector2D(0, 0); 
+                    m_velocity = Vector2D(0, 0);
                 }
                 else
                 {
                     // Jab agent bilkul safe raste ki taraf dekhne lage, to Drive state mein jao
-                    escapeState = 4; 
+                    escapeState = 4;
                     escapeMoveFrames = 40; // 40 frames tak straight safe raste mein bhaago
                 }
             }
@@ -376,11 +400,12 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
                 m_velocity = Vector2D(std::cos(m_headingAngle), std::sin(m_headingAngle)) * m_speed;
                 move(env, deltaTime);
                 escapeMoveFrames--;
-                
-                if (escapeMoveFrames <= 0) {
+
+                if (escapeMoveFrames <= 0)
+                {
                     // Safe zone mein aagaye. Escape logic band karo aur A* ko dobara path calculate karne ka kaho
-                    escapeState = 0; 
-                    computePath(env); 
+                    escapeState = 0;
+                    computePath(env);
                 }
             }
             return; // Jab tak escape logic chal rahi hai, normal driving ko ignore karo
@@ -404,31 +429,31 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         if (m_path.empty() || pathBlocked)
         {
             computePath(env);
-            if (m_path.empty()) return;
+            if (m_path.empty())
+                return;
         }
-
 
         // ==========================================
         // THE KALMAN FILTER INTEGRATION PIPELINE
         // ==========================================
-        
+
         // 1. GENERATE FAKE SENSOR NOISE
         // Asal hardware mein GPS/LiDAR kabhi exact position nahi dete.
         // Hum ek random normal distribution (Gaussian Curve) banayenge.
         static std::random_device rd;
         static std::mt19937 gen(rd());
-        static std::normal_distribution<float> noiseDistribution(0.0f, 0.05f); // Mean 0, Std Deviation 0.05 units
 
+        // Gaussian Noise Injection
+        // Instead of passing the "perfect" physical position (m_position) to the robot's brain, we inject a Bell Curve (Gaussian) randomness into the coordinates. This perfectly simulates a cheap, real-world GPS or LiDAR sensor that fluctuates by a few centimeters every frame.
+        static std::normal_distribution<float> noiseDistribution(0.0f, 0.05f); // Mean 0, Std Deviation 0.05 units
         float noiseX = noiseDistribution(gen);
         float noiseY = noiseDistribution(gen);
-        
-        // Noisy Measurement: Asal location mein kharaabi add kardi
-        Vector2D noisySensorMeasurement(m_position.m_x + noiseX, m_position.m_y + noiseY);
+        Vector2D noisySensorMeasurement(m_position.m_x + noiseX, m_position.m_y + noiseY); // Noisy Measurement: Asal location mein kharaabi add kardi
 
         // 2. RUN THE FILTER
         // Pehle math se andaza lagao (Prediction)
         m_kf.predict(deltaTime);
-        
+
         // Phir noisy sensor reading de kar update karo (Correction)
         m_kf.update(noisySensorMeasurement);
 
@@ -438,13 +463,13 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
 
         // ==========================================
 
-
         // --- 4. WAYPOINT PRUNING USING ESTIMATED POSITION ---
         // Hum path check karne ke liye real m_position ke bajaye Estimated Position use karenge!
         while (m_pathIndex < m_path.size() && estimatedPosition.distance(m_path[m_pathIndex]) < 0.3f)
         {
-            if (m_pathIndex == m_path.size() - 1 && estimatedPosition.distance(m_path[m_pathIndex]) >= 0.15f) {
-                break; 
+            if (m_pathIndex == m_path.size() - 1 && estimatedPosition.distance(m_path[m_pathIndex]) >= 0.15f)
+            {
+                break;
             }
             m_pathIndex++;
         }
@@ -462,10 +487,12 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         Vector2D deltaVec = nextWayPoint - estimatedPosition;
 
         float desiredAngle = std::atan2(deltaVec.m_y, deltaVec.m_x);
-        
+
         float error = desiredAngle - m_headingAngle;
-        while (error > M_PI) error -= 2.0f * M_PI;
-        while (error < -M_PI) error += 2.0f * M_PI;
+        while (error > M_PI)
+            error -= 2.0f * M_PI;
+        while (error < -M_PI)
+            error += 2.0f * M_PI;
 
         // Proportional, Integral aur Derivative (PID) math
         m_integral += error * deltaTime;
@@ -474,15 +501,18 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         m_previousError = error;
 
         // Mechanical Limits
-        if (m_angularVelocity > 4.0f) m_angularVelocity = 4.0f;
-        if (m_angularVelocity < -4.0f) m_angularVelocity = -4.0f;
-        
+        if (m_angularVelocity > 4.0f)
+            m_angularVelocity = 4.0f;
+        if (m_angularVelocity < -4.0f)
+            m_angularVelocity = -4.0f;
+
         m_headingAngle += m_angularVelocity * deltaTime;
 
         // --- 6. FLUID THROTTLE (Continuous Driving) ---
         float alignment = std::cos(error);
-        if (alignment < 0.1f) alignment = 0.1f; 
-        
+        if (alignment < 0.1f)
+            alignment = 0.1f;
+
         m_velocity = Vector2D(std::cos(m_headingAngle), std::sin(m_headingAngle)) * (m_speed * alignment);
 
         // Apply physical movement (The actual 2D engine map gets updated here)
@@ -504,7 +534,7 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         {
             std::cout << "[SYSTEM] Deadlock detected! Executing 360-Sweep Recovery...\n";
             Vector2D safeDir(0, 0);
-            
+
             // Backgear lagane ke liye 4 neighbours mein se koi thori si safe jagah dhoondo
             std::vector<Vector2D> checkDirs = {Vector2D(0, -1), Vector2D(0, 1), Vector2D(-1, 0), Vector2D(1, 0)};
             for (auto &d : checkDirs)
@@ -516,13 +546,13 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
                     break;
                 }
             }
-            
+
             if (safeDir.m_x != 0 || safeDir.m_y != 0)
             {
                 // Trigger Phase 1: Backgear lagao aur variables reset karo taake agle frame se escape logic start ho
                 escapeDirAngle = std::atan2(safeDir.m_y, safeDir.m_x);
                 escapeState = 1;
-                escapeMoveFrames = 20; 
+                escapeMoveFrames = 20;
                 spinAccumulator = 0.0f;
                 maxClearance = 0.0f;
             }
@@ -535,10 +565,6 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         }
     }
 }
-
-
-
-
 
 void Agent::computePath(Environment &env)
 {
@@ -580,14 +606,14 @@ void Agent::computePath(Environment &env)
 
     Vector2D gridStart((int)m_position.m_x, (int)m_position.m_y);
     Vector2D gridTarget((int)m_target.m_x, (int)m_target.m_y);
-    
+
     // Pass strictly integer coordinates to the A* grid search
     m_path = AStar::findPath(gridStart, gridTarget, m_internalMap);
 
     if (!m_path.empty())
     {
         m_isUnreachable = false;
-        
+
         // --- 2. HALLWAY CENTERING ---
         // A* generates waypoints on the absolute top-left corner (0.0) of every cell.
         // Adding +0.5 pushes the entire path sequence to the exact center of the corridors
@@ -607,7 +633,7 @@ void Agent::computePath(Environment &env)
         }
 
         m_pathIndex = 1; // Start aiming at index 1 (Index 0 is underneath the agent)
-        
+
         // Pass the raw path to the PathSmoother to convert jagged 90-degree lines into fluid curves
         m_path = PathSmoother::smoothPath(m_path, m_internalMap, 0.1f, 0.2f, 0.001f);
     }

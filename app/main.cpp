@@ -163,3 +163,16 @@ int main()
     cout << "Simulation Closed.\n";
     return 0;
 }
+
+
+// The Final Pipeline (How it all connects)
+
+//     Gaussian Noise corrupts the agent's location.
+
+//     The Kalman Filter mathematically cleans that noise and outputs an estimatedPosition.
+
+//     The agent fires its LiDAR from that estimatedPosition.
+
+//     The rays travel through the Occupancy Grid (m_probMap), applying the Bayesian Log-Odds update (+2.0f for hits, -1.0f for empty space).
+
+//     If a cell's probability crosses the threshold (> 0.0f), it is rendered as a solid wall for the A* pathfinder.

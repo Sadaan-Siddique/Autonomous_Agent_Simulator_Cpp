@@ -37,6 +37,21 @@ private:
     std::vector<std::pair<Vector2D, bool>> m_currentPointCloud; // Stores the latest LIDAR scan
     std::vector<std::vector<int>> m_internalMap;                // The Agent's memory for SLAM Mapping
 
+    // PROBABILISTIC MAPPING 
+    std::vector<std::vector<float>> m_probMap; // Log-Odds map (Dimagh ke liye)
+    
+    // Log-Odds Constants (Tune these for different sensor behaviors) ' l = ln(p / (1 - p)) '; here p is accuracy of sensor like if p = 0.88, then it means our sensor is 88% accurate in identifying a wall
+
+    // +2.0f ka asal matlab hai: "Mujhe 88% yaqeen hai ke yahan deewar hai." Because we have let p = 0.88, asal men ye values LIDAR ki specs pr depend krti hen. Agar acha LIDAR hai to 95%, low hai to 75%
+    // l_(hit) = ln(0. 88 / (1 - 0.88)) = 2.0
+    const float LOG_ODDS_HIT = 2.0f;       // Jab deewar mile to value taizi se barhao
+    
+    // let if sensor says that the path is empty, then the chances that its hyposthesis is wrong(ke asal men path empty nhi tha, agey obstacle hai lekin sensor wrongly keh de ke raasta khaali hai to ye type II error hai) is 27% (Probability of Type II error; Ho = Raasta bilkul khali hai, Null hypothesis ko accept kar lena jabke wo false ho.)
+    // l_(miss) = ln(0. 27 / (1 - 0.27)) = -1.0
+    const float LOG_ODDS_MISS = -3.0f;     // Jab rasta khali ho to value kam karo
+    const float MAX_LOG_ODDS = 4.0f;      // Maximum Yaqeen (Wall)
+    const float MIN_LOG_ODDS = -5.0f;     // Maximum Yaqeen (Empty Space)
+
     // Bresenham's algorithm to trace LIDAR rays, The algorithm's job is to look at the start and end points, and figure out every single grid cell the laser passed through in between them.
     // By making it private, you guarantee that the only thing allowed to alter the agent's memory is the agent's own LIDAR sensor.
     void bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Environment &env); 
