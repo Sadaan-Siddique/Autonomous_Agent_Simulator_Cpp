@@ -60,9 +60,10 @@ int main()
     Environment env(width, height);
     env.placeRandomObstacles(obstacleCount); 
 
-    Vector2D startLocation(0.5f, 0.5f); // Spawn exactly in the center of the first cell
+    Vector2D startLocation(0.0f, 0.0f); // Spawn exactly in the center of the first cell
     Vector2D targetLocation(targetX, targetY); // Target the exact center
 
+    env.clearCell(startLocation);
     env.clearCell(startLocation);
     env.clearCell(targetLocation);
 

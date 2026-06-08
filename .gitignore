@@ -4,5 +4,6 @@
 # git rm -r --cached tests/
 
 docs/team_distribution_suggestion.md
+docs/LinearAlgebra.md
 executables/
 tests/

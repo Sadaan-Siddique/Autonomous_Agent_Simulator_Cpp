@@ -8,7 +8,7 @@
 // #include "../pathFinding/bfs.hpp" // For using BFS, uncomment this
 #include "../pathFinding/aStar.hpp"
 #include "../pathFinding/pathSmoother.hpp"
-
+#include "../math/kalmanFilter.hpp"
 // Using Composition and aggregations
 class Agent
 {
@@ -42,6 +42,8 @@ private:
     void bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Environment &env); 
     // x0, y0 (Start): This is the Agent's exact physical location on the grid. It is the origin point of the LIDAR laser.
     // x1, y1 (End): This is where the LIDAR laser finally stopped. It either hit a wall, or it reached its maximum range and faded out into empty space.
+
+    KalmanFilter m_kf;
 
 public:
     // For SLAM, agent needs to know how big its memory array should be

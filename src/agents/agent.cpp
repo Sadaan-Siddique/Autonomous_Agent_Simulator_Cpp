@@ -1,11 +1,12 @@
 #include "../../include/agents/agent.hpp"
+#include <random>
 #include <cmath>
 
 // 1. What is Waypoint Navigation?
 // Imagine using Google Maps. It doesn't just draw a single straight line from your house to a restaurant; it gives you a series of intermediate steps (turn right on Main St, go straight for 2 miles, turn left on 4th Ave).
 // Waypoint Navigation is the exact same concept for autonomous robotics. Instead of giving the robot one final destination, you feed it a list of intermediate coordinates (waypoints). The robot's physics engine only worries about driving in a straight line to the very next waypoint. Once it hits that waypoint, it aims at the next one, playing "connect the dots" until it reaches the final target.
 
-Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor, int mapWidth, int mapHeight) : m_id(id), m_position(startPosition), m_velocity(0, 0), m_sensor(sensor)
+Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor, int mapWidth, int mapHeight) : m_id(id), m_position(startPosition), m_velocity(0, 0), m_sensor(sensor), m_kf()
 {
     // Initializing kinematics variables
     m_headingAngle = 0.0f;    // 0 radians means facing perfectly Right/East
@@ -17,6 +18,8 @@ Agent::Agent(int id, const Vector2D &startPosition, Sensor *sensor, int mapWidth
     m_kp = 1.5f; // Proportional (How aggressive it steers, left/right wobbling)
     m_ki = 0.0f; // Integral (Fixes mechanical drift - 0 for simulation)
     m_kd = 0.5f; // Derivative (The brakes that prevent overshooting/wobbling, dampening)
+
+    m_kf.setState(startPosition);
 
     m_previousError = 0.0f;
     m_integral = 0.0f;
@@ -34,7 +37,7 @@ void Agent::setTarget(const Vector2D &target) { m_target = target; }
 
 void Agent::reset(const Vector2D &startPos)
 {
-    m_position = startPos;
+    m_position = Vector2D(0, 0);
     m_velocity = Vector2D(0, 0);
     m_angularVelocity = 0.0f;
     m_previousError = 0.0f;
@@ -44,6 +47,7 @@ void Agent::reset(const Vector2D &startPos)
     m_pathIndex = 0;
     m_currentPointCloud.clear();
     m_isUnreachable = false; // RESET THE ALARM
+    m_kf.setState(startPos);
 
     // Wipe the SLAM memory back to Fog of War!
     for (int y = 0; y < m_internalMap.size(); y++)
@@ -174,7 +178,8 @@ void Agent::move(Environment &env, float deltaTime)
     else
     {
         m_velocity = Vector2D(0, 0); // Hard brake on physical collision
-        std::cout << "Agent has been Stucked!\n";
+        if (!(m_position == Vector2D(0, 0)))
+            std::cout << "Agent has been Stucked!\n";
     }
 }
 
@@ -244,7 +249,7 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
     {
         m_position = m_target;
         m_velocity = Vector2D(0, 0);
-        std::cout << "Target Reached!\n";
+        std::cout  << "Target Reached!\n";
         return;
     }
 
@@ -402,11 +407,43 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
             if (m_path.empty()) return;
         }
 
-        // --- 4. WAYPOINT PRUNING (Distance Check) ---
-        // Tang raston ke liye hum waypoint delete karne ka distance 0.3f rakhte hain taake corners cut na hon
-        while (m_pathIndex < m_path.size() && m_position.distance(m_path[m_pathIndex]) < 0.3f)
+
+        // ==========================================
+        // THE KALMAN FILTER INTEGRATION PIPELINE
+        // ==========================================
+        
+        // 1. GENERATE FAKE SENSOR NOISE
+        // Asal hardware mein GPS/LiDAR kabhi exact position nahi dete.
+        // Hum ek random normal distribution (Gaussian Curve) banayenge.
+        static std::random_device rd;
+        static std::mt19937 gen(rd());
+        static std::normal_distribution<float> noiseDistribution(0.0f, 0.05f); // Mean 0, Std Deviation 0.05 units
+
+        float noiseX = noiseDistribution(gen);
+        float noiseY = noiseDistribution(gen);
+        
+        // Noisy Measurement: Asal location mein kharaabi add kardi
+        Vector2D noisySensorMeasurement(m_position.m_x + noiseX, m_position.m_y + noiseY);
+
+        // 2. RUN THE FILTER
+        // Pehle math se andaza lagao (Prediction)
+        m_kf.predict(deltaTime);
+        
+        // Phir noisy sensor reading de kar update karo (Correction)
+        m_kf.update(noisySensorMeasurement);
+
+        // 3. EXTRACT THE PURE TRUTH
+        // Filter sari math aur covariances ko use kar ke ek filtered location nikalega
+        Vector2D estimatedPosition = m_kf.getEstimatedPosition();
+
+        // ==========================================
+
+
+        // --- 4. WAYPOINT PRUNING USING ESTIMATED POSITION ---
+        // Hum path check karne ke liye real m_position ke bajaye Estimated Position use karenge!
+        while (m_pathIndex < m_path.size() && estimatedPosition.distance(m_path[m_pathIndex]) < 0.3f)
         {
-            if (m_pathIndex == m_path.size() - 1 && m_position.distance(m_path[m_pathIndex]) >= 0.15f) {
+            if (m_pathIndex == m_path.size() - 1 && estimatedPosition.distance(m_path[m_pathIndex]) >= 0.15f) {
                 break; 
             }
             m_pathIndex++;
@@ -419,7 +456,11 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
 
         // --- 5. FULL PID KINEMATIC CONTROLLER ---
         Vector2D nextWayPoint = m_path[m_pathIndex];
-        Vector2D deltaVec = nextWayPoint - m_position;
+
+        // The agent steers based on where it *thinks* it is (KF Output)
+        // NOT where the physical engine knows it is (m_position)
+        Vector2D deltaVec = nextWayPoint - estimatedPosition;
+
         float desiredAngle = std::atan2(deltaVec.m_y, deltaVec.m_x);
         
         float error = desiredAngle - m_headingAngle;
@@ -444,7 +485,7 @@ void Agent::decideNextMove(Environment &env, float deltaTime)
         
         m_velocity = Vector2D(std::cos(m_headingAngle), std::sin(m_headingAngle)) * (m_speed * alignment);
 
-        // Apply physical movement
+        // Apply physical movement (The actual 2D engine map gets updated here)
         move(env, deltaTime);
 
         // --- 7. STALL SENSING (Stuck Detection) ---
