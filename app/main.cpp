@@ -38,9 +38,9 @@ int main()
     cin >> obstacleCount;
 
     // 4. Sensor Specs (Hardcoded)
-    float lidarRange = 6.0f;
+    float lidarRange = 8.0f;
     float lidarFOVDegrees = 180.0f;
-    int lidarRays = 30;
+    int lidarRays = 120;
 
     // --- SAFETY CLAMPS ---
     if (targetX < 0) targetX = 0;

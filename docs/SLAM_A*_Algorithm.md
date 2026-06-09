@@ -24,6 +24,10 @@ Complete Simulator Hierarchy
 
     Phase 7: Applying PID (Proportional Derivative Integral)
 
+    phase 8: Dynamic Obstacles
+    
+    phase 9: 
+
 
 Before Phase 5:
 Agent is basically omniscient. When you call AStar::findPath(..., env), you are handing the agent the master blueprint of the universe. It knows exactly where every wall is before it even starts its engine.

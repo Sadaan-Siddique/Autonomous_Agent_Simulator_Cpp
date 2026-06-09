@@ -16,15 +16,16 @@ At its core, the simulator is driven by applied Data Structures and Algorithms:
 * **Gradient Descent Smoothing:** Post-processes the blocky A* grid path into a fluid, drivable trajectory using mathematical optimization algorithms.
 
 ### 🤖 Robotics & Navigation
-* **Real-Time SLAM:** The agent starts with a "Fog of War" and dynamically builds an internal grid map of its environment using sensory data.
+* **Probabilistic SLAM & Occupancy Grid Mapping:** The agent starts with a "Fog of War" and dynamically builds a continuous float-based internal map. It utilizes **Bayesian Log-Odds Updates** to mathematically filter out dynamic "ghosts" and solidify static walls based on sensory evidence, rather than relying on binary mapping.
+* **State Estimation (Kalman Filters):** Simulates real-world hardware inaccuracies by injecting **Gaussian Noise (Normal Distribution)** into the agent's GPS coordinates. A custom kinematic **Kalman Filter** continuously predicts and corrects this noise, allowing the agent to steer based on its mathematical "belief" rather than relying on absolute engine coordinates.
 * **LIDAR Sensor Simulation:** Implements a customizable ray-casting sensor (defaulting to 180° FOV with 30 laser rays). 
-* **Live Memory Sync:** Zero-persistence dynamic mapping ensures the agent instantly updates its internal map to account for moving objects, avoiding "ghost trails."
 * **PID Controller:** A custom Proportional-Integral-Derivative steering controller ensures fluid, realistic acceleration and turning, preventing robotic "snapping" to waypoints.
 
-### ⚙️ Physics & Environment
+### ⚙️ Physics, Environment & Linear Algebra
+* **Custom Mathematics Module:** Built a lightweight, custom `Matrix` and `Vector2D` library to handle all 2D kinematics, dot products, and vector normalization natively. 
+* **Unified Transformations:** Implements **Homogeneous Coordinates** using 3x3 matrices to bake rotation and translation into a single, unified transformation matrix. This seamlessly projects the local LiDAR space into global world coordinates without complex trigonometric overhead.
 * **Dynamic Reactive Obstacles:** Autonomous "enemy" blocks patrol the grid. They feature real-time collision detection, instantly rebounding off static walls, other obstacles, and the agent.
 * **Procedural Generation:** The environment uses the modern C++ `<random>` library (Mersenne Twister) to populate the grid with a chaotic mix of static and dynamic obstacles upon every reset.
-* **Custom Mathematics Module:** Built a lightweight, custom `Matrix` and `Vector2D` library to handle all 2D kinematics, dot products, vector normalization, and rotational transformations natively.
 
 ### 🎨 Rendering Engine
 * **Raw OpenGL Pipeline:** Rendering is handled via a custom minimal wrapper over **OpenGL 3.3 Core Profile**, using **GLFW** for window management and **GLAD** for function pointers.
@@ -99,9 +100,9 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 ---
 
 ## 📸 Demo
-![Simulator Demo](./assets/demo.png)
+![Simulator Demo](./assets/demo_start.png)
+![Simulator Demo](./assets/demo_middle.png)
 ![Simulator Demo](./assets/demo_reached.png)
----
 
 ### Author
 
@@ -110,4 +111,3 @@ Once the OpenGL window launches, you can use the following keyboard controls to 
 *Designed for exploration in low-level systems programming, graphics, and autonomous robotics.*
 
 ```
-

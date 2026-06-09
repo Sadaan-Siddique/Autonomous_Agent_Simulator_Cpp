@@ -54,11 +54,15 @@ bool Renderer::isRunning() const
     return !glfwWindowShouldClose(m_window);
 }
 
-void Renderer::clearScreen(bool isAlarmActive) const {
-    if (isAlarmActive) {
+void Renderer::clearScreen(bool isAlarmActive) const
+{
+    if (isAlarmActive)
+    {
         // If the agent is trapped, clear the screen with a Dark Red color
         glClearColor(0.4f, 0.0f, 0.0f, 1.0f);
-    } else {
+    }
+    else
+    {
         // Normal Dark Charcoal background
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
     }
@@ -157,7 +161,7 @@ void Renderer::initPrimitives()
     glGenBuffers(1, &m_fovVBO);
     glBindVertexArray(m_fovVAO);
     glBindBuffer(GL_ARRAY_BUFFER, m_fovVBO);
-    glBufferData(GL_ARRAY_BUFFER, 4000 * sizeof(float), NULL, GL_DYNAMIC_DRAW); 
+    glBufferData(GL_ARRAY_BUFFER, 4000 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
     glEnableVertexAttribArray(0);
 }
@@ -257,36 +261,45 @@ void Renderer::renderEnvironment(const Environment &env)
 }
 
 // Add this new function to draw the internal memory
-void Renderer::renderInternalMap(const Agent& agent, const Environment& env) {
+void Renderer::renderInternalMap(const Agent &agent, const Environment &env)
+{
     float cellWidth = 2.0f / (float)env.getWidth();
     float cellHeight = 2.0f / (float)env.getHeight();
-    const auto& map = agent.getInternalMap();
+    const auto &map = agent.getInternalMap();
 
     // Minor padding adjustment to create crisp, clean grid separators
-    float padding = 0.93f; 
+    float padding = 0.93f;
 
-    for (int y = 0; y < env.getHeight(); y++) {
-        for (int x = 0; x < env.getWidth(); x++) {
+    for (int y = 0; y < env.getHeight(); y++)
+    {
+        for (int x = 0; x < env.getWidth(); x++)
+        {
             float screenX = -1.0f + (x * cellWidth);
             float screenY = 1.0f - ((y + 1) * cellHeight);
 
             // --- 1. UNEXPLORED TERRITORY (FOG OF WAR) ---
-            if (map[y][x] == -1) {
-                if (env.isObstacle(Vector2D(x, y))) {
+            if (map[y][x] == -1)
+            {
+                if (env.isObstacle(Vector2D(x, y)))
+                {
                     // Ghost Obstacle: Deep, translucent tactical crimson
                     drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.22f, 0.05f, 0.07f);
-                } else {
+                }
+                else
+                {
                     // Hidden Empty Space: Low-contrast midnight obsidian
                     drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.03f, 0.04f, 0.06f);
                 }
-            } 
+            }
             // --- 2. EXPLORED OBSTACLES (CONFIRMED WALLS) ---
-            else if (map[y][x] == 1) {
-                // Bright Warning Amber: Pops out dramatically against dark cells
-                drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.85f, 0.42f, 0.12f);
+            else if (map[y][x] == 1)
+            {
+                 // Bright Orange: Pops out dramatically against dark cells
+                    drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.85f, 0.42f, 0.12f);
             }
             // --- 3. EXPLORED FLOOR (CONFIRMED SAFE ZONE) ---
-            else {
+            else
+            {
                 // Sleek Slate Blue-Gray: Looks clean and clearly distinct from walls
                 drawQuad(screenX, screenY, cellWidth * padding, cellHeight * padding, 0.14f, 0.16f, 0.22f);
             }
@@ -294,11 +307,11 @@ void Renderer::renderInternalMap(const Agent& agent, const Environment& env) {
     }
 }
 
-void Renderer::renderTarget(const Vector2D& target, int width, int height) const
+void Renderer::renderTarget(const Vector2D &target, int width, int height) const
 {
     float cellWidth = 2.0f / (float)width;
     float cellHeight = 2.0f / (float)height;
-    
+
     // Convert grid coordinates to screen coordinates
     float screenX = -1.0f + (target.m_x * cellWidth);
     float screenY = 1.0f - ((target.m_y + 1.0f) * cellHeight);
@@ -347,12 +360,11 @@ void Renderer::renderAgent(const Agent &agent, const Environment &env)
     float vertices[12] = {
         centerX + p1.m_x, centerY + p1.m_y, // Triangle 1 (Top half)
         centerX + p2.m_x, centerY + p2.m_y,
-        centerX + p4.m_x, centerY + p4.m_y, 
+        centerX + p4.m_x, centerY + p4.m_y,
 
         centerX + p1.m_x, centerY + p1.m_y, // Triangle 2 (Bottom half)
         centerX + p4.m_x, centerY + p4.m_y,
-        centerX + p3.m_x, centerY + p3.m_y  
-    };
+        centerX + p3.m_x, centerY + p3.m_y};
 
     // 6. Send the custom triangle to the GPU
     glUseProgram(m_shaderProgram);
@@ -363,7 +375,7 @@ void Renderer::renderAgent(const Agent &agent, const Environment &env)
     glBindVertexArray(m_arrowVAO);
     glBindBuffer(GL_ARRAY_BUFFER, m_arrowVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-    
+
     // Draw 6 vertices (the two connected triangles)
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
@@ -380,14 +392,16 @@ void Renderer::renderLidar(const Agent &agent, const Environment &env)
     float startY = 1.0f - ((pos.m_y + 1.0f) * cellHeight) + (cellHeight / 2.0f);
 
     std::vector<std::pair<Vector2D, bool>> hits = agent.getPointCloud();
-    if (hits.empty()) return;
+    if (hits.empty())
+        return;
 
-// --- 1. Draw the Translucent Fan ---
+    // --- 1. Draw the Translucent Fan ---
     std::vector<float> fanVertices;
     fanVertices.push_back(startX); // Center point of the fan
     fanVertices.push_back(startY);
 
-    for (const auto& hit : hits) {
+    for (const auto &hit : hits)
+    {
         // hit is now a std::pair! Use hit.first to access the Vector2D
         float endX = -1.0f + (hit.first.m_x * cellWidth) + (cellWidth / 2.0f);
         float endY = 1.0f - ((hit.first.m_y + 1.0f) * cellHeight) + (cellHeight / 2.0f);
@@ -398,31 +412,33 @@ void Renderer::renderLidar(const Agent &agent, const Environment &env)
     glUseProgram(m_shaderProgram);
     glUniform2f(glGetUniformLocation(m_shaderProgram, "u_scale"), 1.0f, 1.0f);
     glUniform2f(glGetUniformLocation(m_shaderProgram, "u_offset"), 0.0f, 0.0f);
-    
+
     // Light Red with 20% Alpha (Transparency)
-    glUniform4f(glGetUniformLocation(m_shaderProgram, "u_color"), 1.0f, 0.2f, 0.2f, 0.2f); 
+    glUniform4f(glGetUniformLocation(m_shaderProgram, "u_color"), 1.0f, 0.2f, 0.2f, 0.2f);
 
     glBindVertexArray(m_fovVAO);
     glBindBuffer(GL_ARRAY_BUFFER, m_fovVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, fanVertices.size() * sizeof(float), fanVertices.data());
-    
+
     // GL_TRIANGLE_FAN connects Center to Point 1, Point 2, Point 3, creating a solid polygon
     glDrawArrays(GL_TRIANGLE_FAN, 0, hits.size() + 1);
 
     // --- 2. Draw the Solid Laser Lines over the fan ---
-    for (size_t i = 0; i < hits.size(); i++) {
+    for (size_t i = 0; i < hits.size(); i++)
+    {
         // Darker Red with 100% Alpha (Solid)
-        drawLine(startX, startY, fanVertices[(i+1)*2], fanVertices[(i+1)*2+1], 0.8f, 0.0f, 0.0f, 1.0f);
+        drawLine(startX, startY, fanVertices[(i + 1) * 2], fanVertices[(i + 1) * 2 + 1], 0.8f, 0.0f, 0.0f, 1.0f);
     }
 }
 
 // environment se moving blocks ki float positions le ga, aur unko ek dangerous Neon Magenta/Crimson color mein draw karega taake wo static orange walls se alag aur khatarnaak nazar aayein!
-void Renderer::renderDynamicObstacles(const Environment& env) const
+void Renderer::renderDynamicObstacles(const Environment &env) const
 {
     float cellWidth = 2.0f / (float)env.getWidth();
     float cellHeight = 2.0f / (float)env.getHeight();
 
-    for (const auto& obs : env.getDynamicObstacles()) {
+    for (const auto &obs : env.getDynamicObstacles())
+    {
         Vector2D pos = obs.getPosition();
 
         // Kyunke humne dynamic obstacles ko center (0.5f offset) par place kiya tha,

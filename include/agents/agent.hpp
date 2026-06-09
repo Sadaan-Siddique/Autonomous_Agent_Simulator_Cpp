@@ -48,6 +48,9 @@ private:
     
     // let if sensor says that the path is empty, then the chances that its hyposthesis is wrong(ke asal men path empty nhi tha, agey obstacle hai lekin sensor wrongly keh de ke raasta khaali hai to ye type II error hai) is 27% (Probability of Type II error; Ho = Raasta bilkul khali hai, Null hypothesis ko accept kar lena jabke wo false ho.)
     // l_(miss) = ln(0. 27 / (1 - 0.27)) = -1.0
+    // const float LOG_ODDS_MISS = -0.4f;     // Jab rasta khali ho to value kam karo
+    // const float MAX_LOG_ODDS = 10.0f;      // Maximum Yaqeen (Wall)
+    // const float MIN_LOG_ODDS = -2.0f;     // Maximum Yaqeen (Empty Space)
     const float LOG_ODDS_MISS = -3.0f;     // Jab rasta khali ho to value kam karo
     const float MAX_LOG_ODDS = 4.0f;      // Maximum Yaqeen (Wall)
     const float MIN_LOG_ODDS = -5.0f;     // Maximum Yaqeen (Empty Space)

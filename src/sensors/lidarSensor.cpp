@@ -11,31 +11,31 @@ std::vector<std::pair<Vector2D, bool>> LidarSensor::scan(const Vector2D &agentPo
 {
     std::vector<std::pair<Vector2D, bool>> pointCloud;
     float angleStep = (m_rayCount > 1) ? (m_fov / (float)(m_rayCount - 1)) : 0.0f;
-    float startAngle = heading - (m_fov / 2.0f);
+    float startAngleOfRay = heading - (m_fov / 2.0f); // Lidar ki pehli ray kahan se shuru hogi? Agar agent 90° par dekh raha hai aur FOV 180° hai, to scan $(90 - 90) = 0^\circ$ se start hoga.
 
     // 1. TRANSLATION MATRIX: Yeh matrix agent ki position ko represent karti hai
     // Kyunke agent ek hi jagah hai, yeh loop ke bahar ek dafa banegi
     Matrix transMatrix = Matrix::translation(agentPos.m_x, agentPos.m_y);
 
-    for (int i = 0; i < m_rayCount; i++)
+    for (int i = 0; i < m_rayCount; i++) // for each ray
     {
-        float currentAngle = startAngle + (i * angleStep);
+        float currentAngle = startAngleOfRay + (i * angleStep); // Angle of each ray
 
         // 2. ROTATION MATRIX: Is specific ray ka angle
-        Matrix rotMatrix = Matrix::rotation(currentAngle);
+        Matrix rotMatrix = Matrix::rotation(currentAngle); // to rotate that ray on its current angle from start angle
 
         // 3. THE MAGIC (TRANSFORM HIERARCHY):
         // Order is crucial: Translation * Rotation (Means rotate first, then translate)
         // Ye ek single 3x3 matrix hai jisme dono operations baked hain!
-        Matrix finalTransform = transMatrix * rotMatrix;
+        Matrix finalTransform = transMatrix * rotMatrix; // A matrix in which agent's location and ray's direction are present, first rotate then translate
 
         bool hitWall = false;
         Vector2D finalPos = agentPos;
 
-        for (float step = 0.0f; step <= m_range; step += 0.5f)
+        for (float step = 0.0f; step <= m_range; step += 0.5f) // Ray 0.0 se shuru ho kar m_range (maslan 6.0m) tak jati hai, har dafa 0.5 meters aage barhti hai.
         {
             // LOCAL SPACE: LIDAR ke hisaab se ray sirf X-axis par aage barh rahi hai
-            Vector2D localPos(step, 0.0f);
+            Vector2D localPos(step, 0.0f); // Laser ke hisaab se wo sirf apne samne (X-axis) par seedhi ja rahi hai. Use map ka kuch nahi pata.
 
             // WORLD SPACE: Humari final matrix is local point ko direct map par theek jagah projct kar degi!
             // Koi manual addition (agentPos + ...) ki zaroorat nahi!

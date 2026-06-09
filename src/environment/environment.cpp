@@ -32,10 +32,14 @@ bool Environment::isObstacle(const Vector2D &pos) const
     // 2. Dynamic Obstacle Check (Treating them as 1x1 physical blocks)
     for (const auto &obs : m_dynamicObstacles)
     {
-        // Agar current check position moving block ke center se 0.5 distance ke andar hai,
-        // to iska matlab wahan physical block mojood hai!
-        if (obs.getPosition().distance(pos) <= 0.6f)
+        // Pata lagao ke moving block is waqt EXACTLY kis array index par hai
+        int obsCellX = (int)obs.getPosition().m_x;
+        int obsCellY = (int)obs.getPosition().m_y;
+        
+        // Agar LiDAR ki ray exactly usi index ko check kar rahi hai, tabhi hit dalo!
+        if ((int)pos.m_x == obsCellX && (int)pos.m_y == obsCellY) {
             return true;
+        }
     }
 
     return false;

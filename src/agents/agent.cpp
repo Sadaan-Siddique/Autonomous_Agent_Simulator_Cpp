@@ -42,7 +42,7 @@ void Agent::setTarget(const Vector2D &target) { m_target = target; }
 
 void Agent::reset(const Vector2D &startPos)
 {
-    m_position = Vector2D(0, 0);
+    m_position = startPos;
     m_velocity = Vector2D(0, 0);
     m_angularVelocity = 0.0f;
     m_previousError = 0.0f;
@@ -55,14 +55,18 @@ void Agent::reset(const Vector2D &startPos)
     m_kf.setState(startPos);
 
     // Wipe the SLAM memory back to Fog of War!
+    // Wipe Low-Res Map
     for (int y = 0; y < m_internalMap.size(); y++)
-    {
         for (int x = 0; x < m_internalMap[0].size(); x++)
         {
             m_internalMap[y][x] = -1;
-            m_probMap[y][x] = 0.0f; // Reset Log odds
+            m_probMap[y][x] = 0.0f; // Reset Log-Odds
         }
-    }
+
+    // Wipe High-Res Map
+    // for (int y = 0; y < m_probMap.size(); y++)
+    //     for (int x = 0; x < m_probMap[0].size(); x++)
+    //         m_probMap[y][x] = 0.0f; // Reset Log-Odds
 }
 
 void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Environment &env)
@@ -82,54 +86,62 @@ void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Env
     // Get the absolute physical static grid to verify before erasing
     const auto &realGrid = env.getGrid();
 
-    while (true)
+    while (true) // Ek infinite loop jo grid block by grid block aage barhega jab tak end point (x1, y1) na aa jaye.
     {
-        if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height)
+        if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) // Agar current block map ke andar hai, tabhi uski probability update karo.
         {
-            // The Bayesian Approach & Log-Odds
-            if (x0 == x1 && y0 == y1 && isHit) m_probMap[y0][x0] += LOG_ODDS_HIT; // Sensor hit a wall: Increase probability of obstacle
-            else m_probMap[y0][x0] += LOG_ODDS_MISS; // Sensor ray passed through this cell: Decrease probability
+            // --- THE BAYESIAN LOG-ODDS UPDATE ---
+            if (x0 == x1 && y0 == y1 && isHit) // Bayesian Hit
+            {
+                m_probMap[y0][x0] += LOG_ODDS_HIT; // Hit: Yaqeen barhao
+            }
+            else
+            {
+                // --- THE DISCRETIZATION FIX (Grazing Ray Protection) ---
+                // Agar physical grid mein ye actual static wall (1) nahi hai,
+                // SIRF TAB usay khali rasta samajh kar minus karo.
+                if (realGrid[y0][x0] != 1)
+                { // Bayesian Miss & Discretization Fix
+                    m_probMap[y0][x0] += LOG_ODDS_MISS;
+                }
+            }
 
             // Clamp values to prevent infinite math explosions
-            // float std::clamp(float v, float lo, float hi);
             if (m_probMap[y0][x0] > MAX_LOG_ODDS)
                 m_probMap[y0][x0] = MAX_LOG_ODDS;
-            if (m_probMap[y0][x0] < MAX_LOG_ODDS)
+            if (m_probMap[y0][x0] < MIN_LOG_ODDS)
                 m_probMap[y0][x0] = MIN_LOG_ODDS;
 
-            // --- SYNC WITH BINARY MAP ---
-            // A* expects 0 (free) or 1 (wall). 
-            // If LogOdds > 0.0f, probability is > 50%, so we treat it as a solid wall.
-            if (m_probMap[y0][x0] > 0.0f) {
-                m_internalMap[y0][x0] = 1;
-            } else {
-                m_internalMap[y0][x0] = 0;
+            // Sync Log-Odds with Binary Map for A*
+            if (m_probMap[y0][x0] > 0.0f)
+            {
+                    m_internalMap[y0][x0] = 1;
+            }
+            else
+            {
+                    m_internalMap[y0][x0] = 0;
             }
         }
-        if (x0 == x1 && y0 == y1) break;
-        
+
+        if (x0 == x1 && y0 == y1)
+            break;
+
         e2 = 2 * err;
-        if (e2 >= dy) { err += dy; x0 += sx; }
-        if (e2 <= dx) { err += dx; y0 += sy; }
+        if (e2 >= dy)
+        {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx)
+        {
+            err += dx;
+            y0 += sy;
+        }
     }
 }
 
 void Agent::move(Environment &env, float deltaTime)
 {
-    // this logic is basically teleporting my agent from one point in grid to other point (position + velosity)
-    // Vector2D targetPosition = m_position + m_velocity;
-
-    // if (env.isInsideBounds(targetPosition) && !env.isObstacle(targetPosition))
-    // {
-    //     env.clearCell(m_position);
-    //     m_position = targetPosition;
-    //     env.placeAgent(m_position); // placing agent in the environment
-    // }
-    // else
-    // {
-    //     std::cout << "Agent " << m_id << " is blocked!\n";
-    // }
-
     // now, we no longer teleport our agent, we are implementing continuous motion, we use kinematic equation: Position = Position + (Velocity * Time).
     // Continuous motion using kinematic equation: Position = Position + (Velocity * Time)
     Vector2D targetPosition = m_position + (m_velocity * deltaTime);
@@ -195,56 +207,30 @@ void Agent::sense(Environment &env)
     // 2. SLAM MAPPING (The Robot's Brain)
     // Retrieve the filtered position from the Kalman Filter.
     // The robot maps the world relative to where it *thinks* it currently is.
-    Vector2D estimatedPos = m_kf.getEstimatedPosition();
+    Vector2D estimatedPos = m_kf.getEstimatedPosition(); // in reality, robot doesn't know its true position. kalman Filters uses mathematics and kinematics to estimate agent's true position
 
     int startX = (int)estimatedPos.m_x;
     int startY = (int)estimatedPos.m_y;
 
+    // int startX = (int)estimatedPos.m_x;
+    // int startY = (int)estimatedPos.m_y;
+
     // Process every laser ray to update the internal map
     for (const auto &ray : m_currentPointCloud)
     {
-        int endX = (int)ray.first.m_x;
-        int endY = (int)ray.first.m_y;
+        // --- THE SYNC FIX ---
+        // Laser hit point ko robot ke belief ke mutabiq adjust karein
+        // Vector difference: HitPoint - TruePos + estimatedPos
+        Vector2D relativeHit = ray.first - m_position + estimatedPos;
+        // int endX = (int)ray.first.m_x;
+        // int endY = (int)ray.first.m_y;
+        int endX = (int)relativeHit.m_x;
+        int endY = (int)relativeHit.m_y;
+
         // Update the Bayesian Log-Odds probability map using the estimated origin
         bresenhamTrace(startX, startY, endX, endY, ray.second, env);
     }
 }
-
-// void Agent::sense(Environment &env)
-// {
-//     // --- 1. THE BULLETPROOF GHOST ERASER ---
-//     // Puraani FOV wali logic hata di hai. Ab hum memory se har us deewar ko
-//     // foran mita denge jo physical static grid (orange walls) ka hissa nahi hai.
-//     int mapW = m_internalMap[0].size();
-//     int mapH = m_internalMap.size();
-//     const auto& realGrid = env.getGrid();
-
-//     for (int y = 0; y < mapH; y++) {
-//         for (int x = 0; x < mapW; x++) {
-//             // Agar agent ki memory mein deewar (1) hai, lekin physical Environment
-//             // ki static grid mein nahi hai (matlab wo ek pink moving block tha)...
-//             if (m_internalMap[y][x] == 1 && realGrid[y][x] != 1) {
-//                 m_internalMap[y][x] = 0; // ...to us GHOST TRAIL ko foran erase kar do!
-//             }
-//         }
-//     }
-
-//     // --- 2. NORMAL LIDAR SCAN ---
-//     // Puraani trails mitane ke baad, ab normally scan karo.
-//     // Jo pink obstacles abhi LIDAR ke samne honge, wo dobara apni nayi current position par draw ho jayenge.
-//     m_currentPointCloud = m_sensor->scan(m_position, m_headingAngle, env);
-
-//     int startX = (int)m_position.m_x;
-//     int startY = (int)m_position.m_y;
-
-//     for (const auto &ray : m_currentPointCloud) {
-//         int endX = (int)ray.first.m_x;
-//         int endY = (int)ray.first.m_y;
-
-//         // Ye function static walls ko mehfooz rakhega aur naye hits ko map karega
-//         bresenhamTrace(startX, startY, endX, endY, ray.second, env);
-//     }
-// }
 
 // I'm changing this decide next move function because of Waypoint Navigation
 // The BFS path is now treated as a list of exact physical coordinates.
@@ -604,6 +590,7 @@ void Agent::computePath(Environment &env)
         }
     }
 
+    // 1. Scale UP coordinates for A* to understand
     Vector2D gridStart((int)m_position.m_x, (int)m_position.m_y);
     Vector2D gridTarget((int)m_target.m_x, (int)m_target.m_y);
 
@@ -618,8 +605,9 @@ void Agent::computePath(Environment &env)
         // A* generates waypoints on the absolute top-left corner (0.0) of every cell.
         // Adding +0.5 pushes the entire path sequence to the exact center of the corridors
         // so the agent's circular hitbox doesn't scrape the walls.
-        for (auto &p : m_path)
+        for (auto &p : m_path) // Scale DOWN the waypoints back to Physical Space
         {
+            // +0.5f adds the point to the center of the mini-cell, then we scale down
             p.m_x += 0.5f;
             p.m_y += 0.5f;
         }
