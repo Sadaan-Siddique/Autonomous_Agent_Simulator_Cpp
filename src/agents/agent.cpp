@@ -113,7 +113,7 @@ void Agent::bresenhamTrace(int x0, int y0, int x1, int y1, bool isHit, const Env
                 m_probMap[y0][x0] = MIN_LOG_ODDS;
 
             // Sync Log-Odds with Binary Map for A*
-            if (m_probMap[y0][x0] > 0.0f)
+            if (m_probMap[y0][x0] > 3.0f)
             {
                     m_internalMap[y0][x0] = 1;
             }
@@ -207,13 +207,13 @@ void Agent::sense(Environment &env)
     // 2. SLAM MAPPING (The Robot's Brain)
     // Retrieve the filtered position from the Kalman Filter.
     // The robot maps the world relative to where it *thinks* it currently is.
-    Vector2D estimatedPos = m_kf.getEstimatedPosition(); // in reality, robot doesn't know its true position. kalman Filters uses mathematics and kinematics to estimate agent's true position
-
-    int startX = (int)estimatedPos.m_x;
-    int startY = (int)estimatedPos.m_y;
+    // Vector2D estimatedPos = m_kf.getEstimatedPosition(); // in reality, robot doesn't know its true position. kalman Filters uses mathematics and kinematics to estimate agent's true position
 
     // int startX = (int)estimatedPos.m_x;
     // int startY = (int)estimatedPos.m_y;
+
+    int startX = (int)m_position.m_x;
+    int startY = (int)m_position.m_y;
 
     // Process every laser ray to update the internal map
     for (const auto &ray : m_currentPointCloud)
@@ -221,11 +221,12 @@ void Agent::sense(Environment &env)
         // --- THE SYNC FIX ---
         // Laser hit point ko robot ke belief ke mutabiq adjust karein
         // Vector difference: HitPoint - TruePos + estimatedPos
-        Vector2D relativeHit = ray.first - m_position + estimatedPos;
-        // int endX = (int)ray.first.m_x;
-        // int endY = (int)ray.first.m_y;
-        int endX = (int)relativeHit.m_x;
-        int endY = (int)relativeHit.m_y;
+        // Vector2D relativeHit = ray.first - m_position + estimatedPos;
+        // int endX = (int)relativeHit.m_x;
+        // int endY = (int)relativeHit.m_y;
+
+        int endX = (int)ray.first.m_x;
+        int endY = (int)ray.first.m_y;
 
         // Update the Bayesian Log-Odds probability map using the estimated origin
         bresenhamTrace(startX, startY, endX, endY, ray.second, env);

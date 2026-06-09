@@ -73,8 +73,8 @@ int main()
     myAgent.setTarget(targetLocation);
     env.placeAgent(myAgent.getPosition());
 
-    // 3. Initialize the Graphics Window
-    Renderer renderer(800, 600, "Autonomous Agent Simulator");
+    // 3. Initialize the Graphics Window, width, height, name
+    Renderer renderer(800, 700, "Autonomous Agent Simulator");
 
     double lastFrameTime = glfwGetTime();
     bool isPaused = false;
